@@ -1,0 +1,97 @@
+# Company-specific Brand Aliases Override for QEF_DESIGN
+# Only brand_standardization is overridden — other sections inherit from Global
+# (unknown_brand_handling, cleaning_rules, platform_specific, quality_scoring, validation_rules)
+
+metadata:
+  version: "v1.0"
+  created_date: "2026-02-02"
+  company: "QEF_DESIGN"
+  description: "Turbo parts competitor brand name standardization for QEF Design"
+  note: "Only brand_standardization is overridden. Other sections inherit from Global via deep merge (SO_P016)."
+
+# Override: QEF_DESIGN turbo parts competitor brands
+brand_standardization:
+  # Major turbo manufacturers
+  "Garrett":
+    - "GARRETT"
+    - "garrett"
+    - "Garrett Motion"
+    - "Garrett®"
+    - "Garrett Advancing Motion"
+    - "GARRETT MOTION"
+
+  "BorgWarner":
+    - "BORGWARNER"
+    - "Borg Warner"
+    - "borg warner"
+    - "Borg-Warner"
+    - "BORG WARNER"
+    - "BW"
+
+  "Holset":
+    - "HOLSET"
+    - "holset"
+    - "Holset®"
+    - "Holset Engineering"
+
+  "IHI":
+    - "ihi"
+    - "IHI Turbo"
+    - "IHI Corporation"
+    - "IHI TURBO"
+
+  "MHI":
+    - "mhi"
+    - "Mitsubishi Heavy Industries"
+    - "MITSUBISHI"
+    - "Mitsubishi Turbo"
+    - "MHI Turbo"
+
+  "Cummins Turbo Technologies":
+    - "Cummins"
+    - "CUMMINS"
+    - "cummins"
+    - "CTT"
+    - "Cummins Turbo"
+
+  "Continental":
+    - "CONTINENTAL"
+    - "continental"
+    - "Continental AG"
+
+  "QEF Design":
+    - "QEF"
+    - "qef"
+    - "QEF DESIGN"
+    - "qef design"
+    - "Q.E.F."
+    - "QEF-DESIGN"
+
+  # Aftermarket brands
+  "Rotomaster":
+    - "ROTOMASTER"
+    - "rotomaster"
+    - "Roto Master"
+
+  "Turbo International":
+    - "TI"
+    - "TURBO INTERNATIONAL"
+    - "turbo international"
+    - "Turbo Intl"
+
+  "Mahle":
+    - "MAHLE"
+    - "mahle"
+    - "Mahle®"
+    - "Mahle Original"
+
+  "Dorman":
+    - "DORMAN"
+    - "dorman"
+    - "Dorman Products"
+
+  "Cardone":
+    - "CARDONE"
+    - "cardone"
+    - "A1 Cardone"
+    - "A-1 Cardone"

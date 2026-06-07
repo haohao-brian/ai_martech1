@@ -1,0 +1,625 @@
+---
+id: "MP102"
+title: "ETL Output Standardization Principle"
+type: "meta-principle"
+category: "data_management"
+date_created: "2025-08-28"
+date_modified: "2026-05-10"
+author: "Claude"
+status: "active"
+version: "1.4"
+weight: 102
+related_to:
+  - "MP064": "ETL-Derivation Separation Principle"
+  - "MP092": "Platform ID Standard"
+  - "MP094": "Platform API Architecture"
+  - "MP059": "Unidirectional Data Flow"
+  - "MP149": "Data Transaction Integrity Principle"
+  - "MP156": "Two-Tier Normativity (binding mechanism for Tier-2 spec files)"
+  - "DM_R027": "ETL Schema Validation Rule"
+  - "MP165": "Dashboard Presence as Pipeline Acceptance (downstream rendering acceptance contract — MP102 v1.3 governs bridge yaml authoring contract at the upstream side, MP165 governs the downstream user-visible rendering acceptance. Bridge yaml correct + DRV pipeline complete is necessary but not sufficient for user-facing completeness; MP165 closes the last-mile gap.) [back-edit added 2026-05-10 per spectra change dashboard-presence-verification]"
+implements:
+  - "SCHEMA": "Schema registry pattern"
+  - "VALIDATION": "Output validation framework"
+binds:
+  # Per MP156 Two-Tier Normativity, the following Tier-2 implementation
+  # spec files are bound by this principle. See `## Files Bound by This
+  # Principle` section below for detail and binding category.
+  - path: "01_db/raw_schema/_authoring/core_schemas.yaml"
+    category: "A"  # Schema Contract
+  - path: "01_db/raw_schema/_authoring/schema_registry.yaml"
+    category: "A"
+  - path: "01_db/raw_schema/_authoring/transformed_schemas.yaml"
+    category: "A"
+  - path: "01_db/raw_schema/_authoring/platform_extensions/"
+    category: "A"
+  - path: "01_db/raw_schema/_authoring/r_definitions/"
+    category: "A"
+  - path: "01_db/raw_schema/_authoring/IMPLEMENTATION_GUIDE.md"
+    category: "A"
+---
+
+# MP102: ETL Output Standardization Principle
+
+## Core Statement
+
+**All ETL pipelines must produce standardized outputs following a core schema with documented platform-specific extensions**: Each ETL script outputs a consistent set of core tables, enabling downstream processes to work reliably across all platforms while preserving platform-specific data through extension fields.
+
+## Architectural Definition
+
+### Three-Layer Schema Architecture
+
+ETL outputs follow a **three-layer schema pattern**:
+
+1. **Core Schema Layer**
+   - Universal fields present across all platforms
+   - Standardized naming conventions
+   - Common data types and formats
+   - Required for downstream processing
+
+2. **Platform Extension Layer**
+   - Platform-specific fields preserved from source
+   - Documented in schema registry
+   - Prefixed with platform_id (e.g., `cbz_`, `eby_`)
+   - Optional for downstream processing
+
+3. **Metadata Layer**
+   - ETL processing metadata
+   - Import timestamps and sources
+   - Platform IDs and versions
+   - Data quality indicators
+
+## Standard ETL Output Tables
+
+### Required Core Tables
+
+Every platform ETL must output these standardized tables:
+
+```yaml
+core_tables:
+  sales:
+    table_name: "df_{platform}_sales___raw"
+    core_fields:
+      - order_id: VARCHAR        # Universal order identifier
+      - customer_id: VARCHAR     # Customer identifier
+      - order_date: VARCHAR      # Order date (to be parsed)
+      - product_id: VARCHAR      # Product identifier
+      - quantity: INTEGER        # Quantity sold
+      - unit_price: NUMERIC      # Price per unit
+      - total_amount: NUMERIC    # Total transaction amount
+      - platform_id: VARCHAR(3) # Three-letter platform_id
+      - import_timestamp: TIMESTAMP
+      - import_source: VARCHAR
+    
+  customers:
+    table_name: "df_{platform}_customers___raw"
+    core_fields:
+      - customer_id: VARCHAR     # Primary identifier
+      - customer_email: VARCHAR  # Email address
+      - customer_name: VARCHAR   # Display name
+      - registration_date: VARCHAR
+      - platform_id: VARCHAR(3)
+      - import_timestamp: TIMESTAMP
+  
+  products:
+    table_name: "df_{platform}_products___raw"
+    core_fields:
+      - product_id: VARCHAR      # Primary identifier
+      - product_name: VARCHAR    # Product name
+      - category: VARCHAR        # Product category
+      - sku: VARCHAR            # Stock keeping unit
+      - platform_id: VARCHAR(3)
+      - import_timestamp: TIMESTAMP
+  
+  reviews:
+    table_name: "df_{platform}_reviews___raw"
+    core_fields:
+      - review_id: VARCHAR       # Primary identifier
+      - product_id: VARCHAR      # Product being reviewed
+      - customer_id: VARCHAR     # Reviewer
+      - rating: NUMERIC         # Rating score
+      - review_date: VARCHAR    # Date of review
+      - review_text: TEXT       # Review content
+      - platform_id: VARCHAR(3)
+      - import_timestamp: TIMESTAMP
+```
+
+### Platform-Specific Extensions
+
+Platform-specific fields are preserved but clearly marked:
+
+```yaml
+platform_extensions:
+  cbz_sales:
+    extends: "sales"
+    additional_fields:
+      - cbz_shop_id: VARCHAR      # Cyberbiz shop identifier
+      - cbz_payment_id: VARCHAR   # Payment transaction ID
+      - cbz_member_level: VARCHAR # Member tier
+      - cbz_utm_source: VARCHAR   # Marketing attribution
+      - cbz_coupon_code: VARCHAR  # Applied coupon
+  
+  eby_sales:
+    extends: "sales"
+    additional_fields:
+      - eby_item_id: VARCHAR      # eBay item number
+      - eby_buyer_username: VARCHAR
+      - eby_transaction_id: VARCHAR
+      - eby_listing_type: VARCHAR # Auction/Buy It Now
+      - eby_feedback_score: INTEGER
+  
+  amz_sales:
+    extends: "sales"
+    additional_fields:
+      - amz_asin: VARCHAR         # Amazon Standard ID
+      - amz_marketplace_id: VARCHAR
+      - amz_fulfillment_channel: VARCHAR
+      - amz_order_status: VARCHAR
+      - amz_prime_member: BOOLEAN
+```
+
+## Schema Registry Implementation
+
+### Registry Structure
+
+```yaml
+# Location (canonical authoring source-of-truth, 2026-04-27 onward):
+# shared/global_scripts/01_db/raw_schema/_authoring/
+# (Relocated from 00_principles/docs/.../etl_schemas/ per amended MP102 + MP156
+#  binding mechanism, spectra change `glue-layer-prerawdata-bridge`, issue #489.)
+
+registry:
+  version: "1.0"
+  last_updated: "2025-08-28"
+  
+  platforms:
+    cbz:
+      name: "Cyberbiz"
+      etl_scripts:
+        - "cbz_ETL01_0IM.R"
+        - "cbz_ETL01_1ST.R"
+        - "cbz_ETL01_2TR.R"
+      outputs:
+        - table: "df_cbz_sales___raw"
+          conforms_to: "sales"
+          extensions: ["cbz_sales"]
+        - table: "df_cbz_customers___raw"
+          conforms_to: "customers"
+          extensions: ["cbz_customers"]
+        - table: "df_cbz_orders___raw"
+          conforms_to: null  # Platform-specific table
+          description: "Order header data specific to Cyberbiz"
+    
+    eby:
+      name: "eBay"
+      etl_scripts:
+        - "eby_ETL_sales_0IM.R"
+        - "eby_ETL_sales_1ST.R" 
+        - "eby_ETL_sales_2TR.R"
+        - "eby_ETL_customers_0IM.R"
+        - "eby_ETL_customers_1ST.R"
+        - "eby_ETL_customers_2TR.R"
+      outputs:
+        - table: "df_eby_sales___raw"
+          conforms_to: "sales"
+          extensions: ["eby_sales"]
+        - table: "df_eby_customers___raw" 
+          conforms_to: "customers"
+          extensions: ["eby_customers"]
+```
+
+## Field Mapping Documentation
+
+### Mapping Strategy
+
+Each ETL script must document field mappings:
+
+```r
+# In ETL script header:
+# FIELD MAPPING:
+# Core Schema -> Source Field
+# order_id -> order.id (API) or "訂單編號" (CSV)
+# customer_id -> customer.id or member.id
+# product_id -> item.sku or product.code
+# [Platform Extensions]
+# cbz_shop_id -> shop.id (Cyberbiz-specific)
+# cbz_utm_source -> order.utm_source (Marketing data)
+```
+
+## Validation Framework
+
+### ETL Output Validation
+
+```r
+# Function: validate_etl_output
+# Location: global_scripts/05_etl_utils/fn_validate_etl_output.R
+
+validate_etl_output <- function(con, platform_id, table_name) {
+  # Load schema registry
+  schema <- load_etl_schema(platform_id, table_name)
+  
+  # Check core fields exist
+  actual_fields <- dbListFields(con, table_name)
+  missing_core <- setdiff(schema$core_fields, actual_fields)
+  
+  if (length(missing_core) > 0) {
+    stop(sprintf("ETL validation failed for %s: Missing core fields: %s",
+                 table_name, paste(missing_core, collapse = ", ")))
+  }
+  
+  # Validate data types
+  table_info <- dbGetQuery(con, sprintf("PRAGMA table_info(%s)", table_name))
+  for (field in schema$core_fields) {
+    expected_type <- schema$field_types[[field]]
+    actual_type <- table_info$type[table_info$name == field]
+    
+    if (!compatible_types(expected_type, actual_type)) {
+      warning(sprintf("Type mismatch for %s.%s: expected %s, got %s",
+                      table_name, field, expected_type, actual_type))
+    }
+  }
+  
+  # Check for undocumented fields
+  documented_fields <- c(schema$core_fields, schema$extension_fields)
+  undocumented <- setdiff(actual_fields, documented_fields)
+  
+  if (length(undocumented) > 0) {
+    message(sprintf("Undocumented fields in %s: %s",
+                    table_name, paste(undocumented, collapse = ", ")))
+  }
+  
+  return(TRUE)
+}
+```
+
+### 0IM Completeness Gate (Mandatory)
+
+For **external-source 0IM imports** (Excel/CSV/API/Google Sheets), output standardization is not complete until **source-to-local completeness is proven**.
+
+Required checks in the same 0IM run:
+
+1. **Source Discovery Completeness**
+   - Enumerate all source units (files/tabs/API pages) before import.
+   - Persist expected source unit list in memory and/or audit artifact.
+
+2. **Per-Source Import Status**
+   - Record `IMPORTED / EMPTY / SKIPPED / FAILED` for each source unit.
+   - Include error reason for non-imported units.
+   - Any unexpected `FAILED` must fail the 0IM run.
+
+3. **Row-Level Reconciliation**
+   - For imported source units, reconcile `source_rows` vs `written_rows`.
+   - Total rows written must equal sum of successfully imported source rows.
+
+4. **Critical Key Reconciliation**
+   - For critical natural keys (for example `ASIN`, `order_id`, `sku`):
+   - Verify source distinct keys are fully represented in local table after write.
+   - Mismatch is a hard failure in production runs.
+
+5. **Audit Artifact Output**
+   - Emit a machine-readable report (CSV) with per-source import status and reconciliation fields.
+   - This artifact is required for issue triage and reproducibility.
+
+6. **Transactional Commit / Rollback**
+   - Run write + reconciliation inside a database transaction boundary.
+   - Commit only when all completeness checks pass.
+   - Roll back on any failed source unit or reconciliation mismatch.
+
+Hard-fail conditions:
+- Missing required source units.
+- Any source unit with import failure.
+- Row reconciliation mismatch.
+- Critical key reconciliation mismatch.
+
+This gate complements schema validation (DM_R027): schema compliance alone is insufficient if data coverage is incomplete.
+
+## Implementation Patterns
+
+### Compliant ETL Implementation
+
+```r
+# cbz_ETL01_0IM.R - Following MP102
+cbz_etl01_import <- function() {
+  # Import raw data
+  raw_data <- fetch_from_api()
+  
+  # Map to core schema
+  df_sales <- raw_data %>%
+    mutate(
+      # Core fields (required)
+      order_id = as.character(id),
+      customer_id = as.character(member_id),
+      order_date = as.character(created_at),
+      product_id = as.character(sku),
+      quantity = as.integer(qty),
+      unit_price = as.numeric(price),
+      total_amount = as.numeric(total),
+      platform_id = "cbz",
+      import_timestamp = Sys.time(),
+      import_source = "API",
+      
+      # Platform extensions (preserved)
+      cbz_shop_id = shop_id,
+      cbz_payment_id = payment_transaction_id,
+      cbz_member_level = member_tier,
+      cbz_utm_source = utm_source,
+      cbz_coupon_code = coupon_used
+    )
+  
+  # Validate output against schema
+  validate_etl_output(con, "cbz", "df_cbz_sales___raw")
+  
+  # Write standardized output
+  dbWriteTable(con, "df_cbz_sales___raw", df_sales, overwrite = TRUE)
+}
+```
+
+### Cross-Platform Consumption
+
+```r
+# Derivation consuming standardized ETL outputs
+d01_multi_platform_analysis <- function() {
+  platforms <- c("cbz", "eby", "amz")
+  
+  # Core fields are guaranteed to exist
+  all_sales <- map_dfr(platforms, function(platform) {
+    tbl2(con, sprintf("df_%s_sales___raw", platform)) %>%
+      select(
+        # Use only core fields for cross-platform analysis
+        order_id, customer_id, order_date,
+        product_id, quantity, total_amount,
+        platform_id
+      ) %>%
+      collect()
+  })
+  
+  # Unified analysis across all platforms
+  platform_comparison <- all_sales %>%
+    group_by(platform_id) %>%
+    summarize(
+      total_orders = n(),
+      total_revenue = sum(total_amount, na.rm = TRUE),
+      avg_order_value = mean(total_amount, na.rm = TRUE)
+    )
+  
+  return(platform_comparison)
+}
+```
+
+## Migration Guidelines
+
+### Converting Existing ETLs
+
+1. **Audit Current Outputs**
+   ```r
+   # List all tables created by ETL
+   tables <- dbListTables(con)
+   etl_tables <- tables[grepl("^df_.*_raw$", tables)]
+   ```
+
+2. **Map to Core Schema**
+   ```r
+   # Document field mappings
+   # Create schema conformance report
+   ```
+
+3. **Add Missing Core Fields**
+   ```r
+   # Ensure all core fields are present
+   # Add metadata fields if missing
+   ```
+
+4. **Prefix Platform-Specific Fields**
+   ```r
+   # Rename: payment_method -> cbz_payment_method
+   # Preserve: All platform-specific data
+   ```
+
+## Benefits
+
+1. **Interoperability**: Downstream processes work across all platforms
+2. **Maintainability**: Clear separation of core vs platform-specific
+3. **Discoverability**: Schema registry documents all outputs
+4. **Flexibility**: Platform extensions preserve unique data
+5. **Validation**: Automated checking ensures compliance
+6. **Evolution**: Core schema can evolve with versioning
+
+## Compliance Requirements
+
+1. **All ETL scripts** must output core schema tables
+2. **Platform extensions** must use platform_id prefix
+3. **Schema registry** must be updated for new fields
+4. **Validation** must pass before data is written
+5. **Documentation** must include field mappings
+
+## Files Bound by This Principle
+
+Per **MP156 Two-Tier Normativity**, the conceptual rules above (Tier-1) are
+realized as concrete, machine-readable specifications (Tier-2) in the following
+files. All Tier-2 files listed are **Category A — Schema Contracts** under the
+MP156 binding taxonomy: their content directly constrains production code
+(ETL pipelines, DDL codegen, glue bridges) and any change requires the
+Change Discipline below.
+
+| File | Role | Binding category |
+|---|---|---|
+| `01_db/raw_schema/_authoring/core_schemas.yaml` | Cross-platform required fields per datatype (sales / customers / orders / products / reviews) with description, aliases, pattern, fallback, coercion | A — Schema Contract |
+| `01_db/raw_schema/_authoring/schema_registry.yaml` | Central registry of ETL completion status per platform × datatype | A — Schema Contract |
+| `01_db/raw_schema/_authoring/transformed_schemas.yaml` | Transformed-layer schemas (post-2TR) | A — Schema Contract |
+| `01_db/raw_schema/_authoring/platform_extensions/{cbz,eby,amz,shp,official_website}_extensions.yaml` | Per-platform extension fields beyond core schema | A — Schema Contract |
+| `01_db/raw_schema/_authoring/r_definitions/SCHEMA_*.R` | Programmatic R schema definitions (poisson, position, customer profile, time series, AI translation cache) | A — Schema Contract |
+| `01_db/raw_schema/_authoring/IMPLEMENTATION_GUIDE.md` | Authoritative how-to guide for using the spec files | A — Schema Contract |
+| `01_db/raw_schema/_authoring/bridges/{COMPANY}/{platform}/{source}.bridge.yaml` (Phase 5+ of #489 onward) | Per-company prerawdata → canonical raw bridges | A — Schema Contract |
+| `01_db/raw_schema/_generated/` | Generated SQL DDL artifact (codegen output, committed) | A — Schema Contract |
+
+> **Pre-relocation note (history)**: Before 2026-04-27 the same files lived
+> under `00_principles/docs/en/part2_implementations/CH10_database_specifications/etl_schemas/`.
+> They were relocated to the canonical authoring location above per spectra
+> change `glue-layer-prerawdata-bridge` (issue #489), which also formalized
+> the binding mechanism in **MP156**. The relocation removes the docs/
+> indirection that previously made these files unreachable from production
+> R code, which was the root cause of the principle being conceptually strong
+> but practically unenforced (MP156 anti-pattern A-1: "Spec lives only in
+> docs, code does not import").
+
+## Change Discipline
+
+Because the bound files in the section above are normative Tier-2 specs
+(MP156 Category A — Schema Contracts), **changes to those files are not
+ordinary code edits**. The following discipline applies in addition to
+ordinary commit / PR rules:
+
+1. **DOC_R009 Triple-Layer Sync** — A schema change that alters principle
+   semantics (e.g., adds a new required core field, removes a required field,
+   redefines coercion rules) SHALL update `MP102.qmd` (Layer 1),
+   `llm/CH00_meta.yaml` MP102 entry (Layer 2), and any
+   `.claude/rules/*.md` quick reference (Layer 3) in a single change set, in
+   that order. Schema changes that only adjust extension fields or add new
+   platforms within existing semantics MAY be scoped to the spec yaml only.
+
+2. **IC_P002 Cross-Company Verification** — Before merging a Category A
+   schema change, the change author SHALL verify the change applies cleanly
+   to every consuming company under `l4_enterprise/` (currently
+   QEF_DESIGN, D_RACING, MAMBA, WISER, kitchenMAMA). The verification
+   includes: rerunning ETL smoke tests on at least one platform per company
+   and confirming no DRV / Shiny app regressions. The commit message SHALL
+   include a `Verified:` trailer:
+
+   ```
+   Verified: schema change against 5 consuming companies
+   (QEF_DESIGN, D_RACING, MAMBA, WISER, kitchenMAMA)
+   ```
+
+3. **Codegen Consistency** — When `core_schemas.yaml`,
+   `transformed_schemas.yaml`, or `platform_extensions/*.yaml` change, the
+   generated SQL DDL artifacts under `01_db/raw_schema/_generated/` SHALL
+   be regenerated and committed in the same change set. Regeneration is
+   reproducible: `Rscript shared/global_scripts/01_db/raw_schema/_build.R`
+   against unchanged `_authoring/` produces byte-identical output.
+
+4. **Bridge Compatibility** (Phase 5+ of #489 onward) — When core schema
+   adds or removes required fields, **all existing per-company bridge yamls**
+   under `_authoring/bridges/{COMPANY}/` SHALL be reviewed and updated.
+   Bridge yamls referencing removed fields SHALL be flagged for human
+   review; new required fields without bridge mapping SHALL fall back to
+   the schema's documented default or to the **`"UNKNOWN"`** sentinel per
+   MP154 Side Effect Defense (never silent NA).
+
+5. **Quarto Docs Consistency** — Reader navigation under
+   `00_principles/docs/en/part2_implementations/CH10_database_specifications/`
+   points to the canonical authoring path. When files in `_authoring/`
+   change semantically, the corresponding chapter narrative SHALL be
+   reviewed for staleness in the same change.
+
+These five disciplines together implement the MP156 binding mechanism for
+this principle: `binds:` frontmatter (Layer 1 metadata) + this section
+(human-readable contract) + DOC_R009 sync (machine-readable propagation).
+
+## v1.3 Self-Converging Review (2026-04-29)
+
+Per spectra change `glue-bridge-self-converging-review` (issue #500), v1.3 amends the `reviewed_by` field on bridge yamls (Tier-2 spec files under `_authoring/bridges/{COMPANY}/{platform}/`). The amendment supersedes v1.2's "real human reviewer identifier" requirement with a structured form that records the AI ensemble review provenance plus a co-located audit trail.
+
+**Why amend**: An ad-hoc ensemble review session (2026-04-28, against 13 QEF_DESIGN amz bridges) found 21 substantive issues across 5 reviewers (4 Claude + Codex GPT-5.4) including 8 CRITICAL and 7 HIGH findings. The session validated AI dual-review as a substitute for human review but exposed three structural gaps in v1.2: (a) the gate was a 5-element string blacklist trivially bypassable, (b) review findings had no binding to the bridge yaml (lived in `/tmp/`), (c) the `sales.bridge.yaml` ground-truth (only previously-human-reviewed bridge) itself contained dead `coercion:` keys che missed — proving AI ensemble can equal-or-better human review when given the right tools.
+
+### Two acceptable forms (with deprecation cutoff 2026-07-31)
+
+**1. Structured (canonical, MP102 v1.3)** — produced by the upgraded `/glue-bridge` skill via `run_ensemble_review.R`. The bridge yaml's `reviewed_by` is a yaml mapping with required fields:
+
+```yaml
+reviewed_by:
+  human_reviewer: "<github-handle>"      # who invoked /glue-bridge (accepts findings)
+  review_mode: "glue-ensemble-v1"        # methodology marker
+  ai_reviewers:                          # which agents participated
+    - codex-cli@<version>
+    - claude-opus-4-7-correctness
+    - claude-opus-4-7-security
+    - claude-opus-4-7-devils-advocate
+  findings_summary:
+    critical: 0                          # MUST == 0 for ship-ready
+    high: 0                              # MUST == 0 for ship-ready
+    medium: <N>                          # all MUST appear in findings_resolutions block
+    low: <M>
+    suggestions: <K>
+    resolved_in_iterations: <N>
+  approved_at: "<ISO 8601 UTC>"
+  approved_in_commit: "<git-sha>"        # filled by post-commit hook
+  review_artifacts: "<source>.bridge.review.md"   # sibling audit trail
+```
+
+The bridge yaml SHALL also contain a `findings_resolutions:` block whenever `findings_summary.medium + low > 0`, with one entry per remaining MEDIUM/LOW finding documenting the acceptance rationale.
+
+A sibling `<source>.bridge.review.md` audit trail SHALL exist in the same directory, containing chronological iteration entries (`## Iteration N` per loop) and a final `## Verdict: CONVERGED at iteration <N>` (or `## Verdict: DIMINISHING at iteration <N>`).
+
+**2. Legacy string (deprecated until 2026-07-31)** — non-empty string outside the placeholder blacklist (`AI`, `REQUIRES_HUMAN_REVIEW`, `TBD`, `TODO`, `FIXME`, `claude`, `codex`, `assistant`). Examples: `"che (kiki830621)"`, `"alice@example.com"`. The validator emits a deprecation WARNING; the runtime gate (`fn_glue_bridge.R`) accepts the value. Starting 2026-07-31 the validator and runtime both reject the legacy form.
+
+### Convergence protocol (Step 6d of `/glue-bridge` SKILL.md)
+
+The self-converging loop terminates by content-based convergence (not max-iteration):
+
+| Terminator | Condition | Bridge ship-ready? |
+|------------|-----------|---------------------|
+| **CONVERGED** | `findings_summary.critical == 0 && high == 0` AND remaining MEDIUM/LOW have `findings_resolutions:` entries | yes |
+| **DIMINISHING** | Iteration N+1 only adds SUGGESTION-level findings AND prev was already clean | yes (with notes) |
+| **PLATEAUED** | `findings_hash[N] == findings_hash[N-1]` with unresolved CRITICAL/HIGH | no — auto-file issue, runtime rejects |
+| **INSTABILITY** | findings_count grew with new CRITICAL/HIGH (codegen regression) | no — rollback to prev iteration |
+
+### Files Bound (v1.3 additions)
+
+The five Tier-2 spec files bound by v1.2 remain bound. v1.3 adds:
+
+- `shared/global_scripts/00_principles/.claude/skills/glue-bridge/SKILL.md` — Step 6 expanded to 6a-6e
+- `shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/run_ensemble_review.R` — orchestration helper
+- `shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/findings_hash.R` — plateau-detection helper
+- `shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/validate_bridge_yaml.R` — accepts structured form (existing file, behavior amended)
+- `shared/global_scripts/05_etl_utils/glue/fn_glue_bridge.R` — runtime gate (existing file, behavior amended)
+- `shared/global_scripts/01_db/raw_schema/_authoring/bridges/_template/SOURCE.bridge.review.md` — audit trail template
+
+### Migration
+
+- All bridges produced by upgraded `/glue-bridge` after 2026-04-29 SHALL use structured form.
+- Existing bridges with legacy string `reviewed_by` (e.g., `sales.bridge.yaml` with `che (kiki830621)`) continue to work until 2026-07-31. After that date they must be regenerated via `/glue-bridge` (which will produce structured form) or manually migrated.
+
+### Trade-off acknowledgment
+
+AI ensemble has no business-semantic anchor. Two AIs may both judge `成本→cost_factory_price` correct based on column names alone, missing that QEF business actually means `cost_supplier_invoice`. This is **accepted** for current scope because the 2026-04-28 pilot session's 21 findings included 0 cases needing business judgment, and downstream DRV audits (D01_07-style) surface metric anomalies if business-semantic errors land in raw layer. If business-semantic verification is later required, add a 5th reviewer "sample data validator" via scope-extension change.
+
+## Relationship to Other Principles
+
+- **MP064**: Maintains ETL-Derivation separation
+- **MP092**: Uses three-letter platform_ids
+- **MP094**: Complements platform API architecture
+- **MP059**: Ensures unidirectional data flow
+- **MP156**: Provides the Two-Tier Normativity binding mechanism that this principle uses to attach to its Tier-2 spec files (canonical example)
+- **MP154**: Cited above in Bridge Compatibility (sentinel over NA)
+- **DOC_R009**: Cited above in Change Discipline (triple-layer sync)
+- **IC_P002**: Cited above in Change Discipline (cross-company verification)
+- **MP159 / MP160 / MP161**: Sibling Phase 9 implicit-to-explicit principles. MP159 governs WHAT-stays-immutable (Layer 1 boundary), MP160 governs HOW-completely AI authors enumerable artifacts, MP161 governs WHERE schemas live (universal vs company-scoped). MP102 v1.3 is the fourth member: it governs WHO (and what evidence) signs off the bridge.
+- **DEV_R056** (Project Primary Language — R First): MP102's ETL output standardization assumes R-based codegen tooling (e.g., `_build.R`, `validate_bridge_yaml.R`, `run_ensemble_review.R`). DEV_R056 makes this assumption explicit at the language level — MP102 governs WHAT the schema codegen produces; DEV_R056 governs WHAT LANGUAGE the codegen tool itself is written in.
+
+## v1.4 Schema Mapping Locality (2026-05-10)
+
+Per `etl-architecture-roadmap` Requirement 3 (Canonical Schema SHALL Live at Raw Layer Post-Glue) and Requirement 4 (Vocabulary Realignment SHALL Lift MP Principles in P1).
+
+### Reinforced normative: Bridge yaml IS the schema mapping mechanism
+
+In post-glue era, the Layer 2 bridge yaml (`bridges/<COMPANY>/<platform>/<datatype>.bridge.yaml`) is the **single canonical location** for source-to-canonical schema mapping. The 1ST and 2TR phase R scripts SHALL NOT duplicate schema mapping work. This was implicit in MP102 v1.2 (Layer 2 bridge yaml as authoring contract) and v1.3 (self-converging review structure); v1.4 makes it explicit.
+
+Specifically:
+
+- **Schema mapping locality**: column rename + type coercion (source-named → canonical-named) happens via bridge yaml `column_mapping.<canonical_field>.from_column` + `coercion` declarations. No other file may reproduce this work for migrated datatypes.
+- **1ST scope post-migration**: encoding normalization, raw quality validation, NA/range checks. NOT schema mapping.
+- **2TR scope post-migration**: date string parse, derived field computation, multi-source join, business rules. NOT schema mapping.
+
+### Cross-reference to etl-architecture-roadmap
+
+`etl-architecture-roadmap` Requirement 3 (Canonical Schema SHALL Live at Raw Layer Post-Glue) is the downstream invariant that this v1.4 amendment supports at the bridge yaml authoring level. Bridge yaml authoring per MP102 v1.4 ensures the raw-layer table satisfies Requirement 3 by construction.
+
+`etl-architecture-roadmap` Requirement 4 (Vocabulary Realignment SHALL Lift MP Principles in P1) explicitly identifies MP102 as a P1 amendment target. This v1.4 increment closes that obligation.
+
+### Migration semantics
+
+For datatypes still using legacy 0IM R script form (per MP064 v2.2 dual-form acknowledgment), schema mapping in 2TR R scripts remains acceptable until P3 migration completes for that datatype. Once a datatype's bridge yaml is authored and the 0IM R script archived, the corresponding 2TR R script's schema mapping work SHALL be removed (per `etl-architecture-roadmap` Requirement 2 P3 scope).
+
+## Conclusion
+
+The ETL Output Standardization Principle ensures that all platform ETL pipelines produce compatible, well-documented outputs while preserving platform-specific richness. This enables robust cross-platform analytics while maintaining the flexibility to handle unique platform features.

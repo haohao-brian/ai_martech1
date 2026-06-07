@@ -1,0 +1,345 @@
+---
+title: "MP156: Two-Tier Normativity"
+subtitle: "Tier-1 conceptual rules in `00_principles/` and Tier-2 implementation specs in code chapters are both normative; principles SHALL bind their tier-2 files explicitly via `binds:` frontmatter + Files Bound section + Change Discipline"
+category: "Meta-Principle"
+type: "Meta-Principle"
+id: "MP156"
+created: "2026-04-27"
+triggered_by: "Issue #489 — spectra-discuss 過程中識別 codebase 已有 10+ Tier-2 normative files 但無命名 + 無統一 change discipline"
+version: "1.0.0"
+status: "active"
+binds: []  # MP156 本身為 meta-principle,不直接 bind 個別 Tier-2 files;各 binding principle (DM_R062, MP102, ...) 各自宣告
+---
+
+## Summary
+
+Codebase 的規範性分兩層:**Tier-1 conceptual normativity**(`00_principles/docs/.../*.qmd` — Meta-Principles / Principles / Rules,描述「應該怎麼想/怎麼設計」)與 **Tier-2 implementation normativity**(chapter sub-dirs 內的 `*.yaml` / `*.csv` / `*.sql` 檔案 — 描述「具體 schema / 路徑 / 對映表」的 contract)。**兩層都 normative**,但傳統習慣只把 `00_principles/` 當規範,造成 Tier-2 files 雖實質規範系統行為(schema spec、canonical path、authoring dictionary)卻沒有明確的 change discipline,常常 silently drift。
+
+每個 Tier-2 file SHALL bound by 一個 Tier-1 principle,via 三段式 binding mechanism:(a) frontmatter `binds:` field 列具體檔案路徑,(b) body `## Files Bound by This Principle` section 描述每檔角色,(c) body `## Change Discipline` section 規範改 Tier-2 file 時必須觸發的同步動作(DOC_R009 三層同步、IC_P002 cross-co verify、commit message conventions)。Tier-2 files 依規範強度分三類(Canonical Schema Contracts / Canonical Path Registries / Authoring Dictionaries),不同類別 change discipline 強度不同。
+
+## Motivation
+
+l4_enterprise codebase 已有 10+ 個 yaml/csv 檔實質規範系統行為(`db_paths.yaml`, `core_schemas.yaml`, `product_master_fields.yaml`, `chinese_labels.yaml`, `brand_aliases.yaml`, `column_aliases.yaml`, `ai_prompts.yaml`, `marketing_strategies.yaml`, `ui_terminology.csv`, `schema_registry.yaml`, `transformed_schemas.yaml`),但 binding 強度不一致:
+
+- **Strong binding** (`db_paths.yaml` ↔ DM_R062):principle subtitle 字面寫「資料檔案必須放在 db_paths.yaml 定義的 canonical 路徑」,改檔被 DOC_R009 + IC_P002 約束
+- **Weak binding** (`core_schemas.yaml` ↔ MP102):MP102 active normative,內文提及 "schema registry pattern" 但沒明確 pin 檔名 — 結果 production code 沒人 enforce schema(grep `core_schemas` 在 production R 檔回傳零),518 行 spec 形同 advisory
+- **Missing binding** (`marketing_strategies.yaml`):無對應 Tier-1 principle 明確 binding,改動完全沒 change discipline
+
+這個 binding 不一致是系統性問題:沒命名 → 沒 reviewer awareness → silent semantic drift。
+
+#489 spectra-discuss 過程中(2026-04-27)使用者識別出這個 emerging pattern 沒被命名,也沒有統一的 change discipline。本 principle 把它形式化為 MP156 meta-principle,作為 #489 glue-layer-prerawdata-bridge change 與後續所有 Tier-2 file binding 補強工作的 architectural foundation。
+
+## Two-Tier Normativity Definition
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Tier 1: Conceptual Normativity                                │
+│ - Location: 00_principles/docs/en/part1_principles/.../*.qmd  │
+│ - Form: Meta-Principles (MP) / Principles (P) / Rules (R)     │
+│ - Content: "Thinking rules" — 應該怎麼想 / 怎麼設計           │
+│ - Examples: MP102 (ETL Output Standardization),               │
+│             DM_R062 (Canonical DB Path Enforcement),           │
+│             MP155 (Minimize Human Input)                      │
+│ - Maintenance: DOC_R009 三層同步,principle revision           │
+└──────────────────────────────────────────────────────────────┘
+                          │ binds (via three-part binding)
+                          ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Tier 2: Implementation Normativity                            │
+│ - Location: code chapters' sub-dirs (e.g., 30_global_data/    │
+│             parameters/, or future 01_db/raw_schema/)         │
+│ - Form: yaml / csv / SQL DDL configs                          │
+│ - Content: "Contract rules" — 具體 schema / 路徑 / 對映表     │
+│ - Examples: db_paths.yaml, core_schemas.yaml,                 │
+│             chinese_labels.yaml, ai_prompts.yaml              │
+│ - Maintenance: bound by Tier-1 principle's Change Discipline  │
+└──────────────────────────────────────────────────────────────┘
+                          │ implements
+                          ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Non-normative: Implementation Code                            │
+│ - Location: chapter dirs (.R / .py / .sql DDL generated)      │
+│ - Form: functions / scripts / tests                           │
+│ - Content: 動行為,不立 contract                              │
+│ - Examples: fn_resolve_company_product_master.R,              │
+│             update_scripts/ETL/{platform}/*.R                 │
+│ - Maintenance: standard code review,no special discipline    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**兩層都 normative**:Tier-1 改動觸發 principle revision discipline(DOC_R009 三層同步、weight、status revision、cross-references update);Tier-2 改動觸發 binding principle 規定的 discipline(視 category 而定,可能含 DOC_R009 + IC_P002 cross-co verify)。差別在抽象層級,不在規範強度。
+
+## Binding Mechanism
+
+每個 Tier-2 file SHALL bound by 一個(且僅一個 primary) Tier-1 principle。Binding 採三段式 template:
+
+### 1. Frontmatter `binds:` Field
+
+Tier-1 principle 的 YAML frontmatter 必須含 `binds:` 列表,列出 absolute file paths(從 `shared/` 起算):
+
+```yaml
+---
+id: "DM_R062"
+title: "Canonical DB Path Enforcement"
+type: "Rule"
+binds:
+  - "shared/global_scripts/30_global_data/parameters/scd_type1/db_paths.yaml"
+---
+```
+
+**Rationale**:`binds:` 機器可讀,將來寫 hook / lint / `spectra analyze` extension 可 enumerate cross-reference。
+
+### 2. `## Files Bound by This Principle` Section
+
+Body 必須含 H2 section 列出所有 bound files,每檔含角色描述(canonical / supplementary / dictionary):
+
+```markdown
+## Files Bound by This Principle
+
+The following files are bound under DM_R062 and form the canonical authoring source
+for database path management:
+
+- `shared/global_scripts/30_global_data/parameters/scd_type1/db_paths.yaml`
+  — Canonical Path Registry. Defines ETL 6-layer DB paths + domain DB paths.
+  All `.duckdb` files SHALL reside at paths defined here.
+```
+
+**Rationale**:人類 review 用,principle .qmd 既有 narrative 風格;單一檔案的角色說明在這裡,frontmatter 只列路徑。
+
+### 3. `## Change Discipline` Section
+
+Body 必須含 H2 section 規範改 bound file 時的同步動作:
+
+```markdown
+## Change Discipline
+
+Changes to files bound under this principle SHALL:
+
+1. Trigger DOC_R009 三層同步 if the principle itself changes (`.qmd` → `llm/CH02_data.yaml` → `.claude/rules/02-coding.md`)
+2. For Canonical Path Registries: changes require IC_P002 cross-company verification (each consuming company's autoinit must succeed)
+3. Pre-commit: confirm no `.duckdb` file exists at non-canonical path in any company's `data/local_data/`
+4. Commit message SHALL include `Refs DM_R062` trailer
+```
+
+**Rationale**:每個 Tier-2 category 的 discipline 強度不同(見 Three Categories);明確列出讓 reviewer + AI agent 知道改動需要什麼配套動作,不再 case-by-case 判斷。
+
+### Composition Rule
+
+如果一個 Tier-2 file 的某 column / section 涉及多個 principle,可以:
+
+- **Primary binding**:選最直接規範該 file 整體存在意義的 principle 為 primary(`binds:` 出現)
+- **Cross-reference**:其他相關 principle 在 `## Relationships` section 提及,但不 `binds:`(避免多重 binding 衝突)
+
+範例:`product_master_fields.yaml` primary binding 是 MP155(Minimize Human Input,因為 yaml 內 field_class 三類分類來自 MP155),cross-reference 提 MP102(field 對應 schema 欄位)、MP154(per-field arbitration policy)。
+
+## Three Categories of Tier-2 Files
+
+依 binding-discipline 強度分三類:
+
+### Category A: Canonical Schema Contracts
+
+**定義**:定義 ETL output / DB table schema 的 yaml/SQL files。任何違反這類 file 的 INSERT / 缺欄位 / type drift 都直接破壞下游 ETL/DRV/Shiny 的假設,影響所有公司。
+
+**Examples**:
+- `core_schemas.yaml` — cross-platform canonical schemas for sales/customers/orders/products/reviews
+- `schema_registry.yaml` — central registry tracking ETL completion per platform×datatype
+- `transformed_schemas.yaml` — transformed-layer schemas
+- `01_db/raw_schema/_authoring/platform_extensions/{platform}_extensions.yaml`(future via #489)
+
+**Binding-discipline strength**:**Strong**
+
+- DOC_R009 三層同步必觸發
+- IC_P002 cross-company verification 必觸發(改 schema 影響所有公司 ETL)
+- 改動 commit message 必含 `Verified: schema change against {N} consuming companies` trailer
+- 對應 Tier-1 principle 必須 explicit pin 具體檔名(weak binding 不允許)
+
+### Category B: Canonical Path Registries
+
+**定義**:定義系統內 canonical 物理位置(檔案路徑、資料庫位置、API endpoint)的 registry。違反導致 file-not-found / db-locked / API-404。
+
+**Examples**:
+- `db_paths.yaml` — 6-layer ETL + domain DB canonical paths
+- `nsql_schema_summary.yaml` 中作為 `source:` pointer 的 metadata(指向 core_schemas.yaml 的 reference)
+- `26_platform_apis/api_registry.yaml` — 外部 API endpoint 註冊
+
+**Binding-discipline strength**:**Strong**
+
+- DOC_R009 三層同步必觸發
+- IC_P002 cross-company verification 必觸發(每家 autoinit 必須能讀到正確路徑)
+- 改動 commit message 必含 `Verified: path resolution across {N} companies` trailer
+- 任何 path 移動需先 archive / non-destructive(per DM_R062)
+
+### Category C: Authoring Dictionaries
+
+**定義**:業務或開發者 author 的對映表 / 翻譯 / 顯示文字 / prompt template / 規則庫。違反通常是 UX degradation(missing translation、wrong prompt)而非 data integrity 損壞。
+
+**Examples**:
+- `chinese_labels.yaml` — UI 中文標籤(per DEV_R052 translate boundary)
+- `brand_aliases.yaml` — 品牌名稱 normalize 對映表
+- `column_aliases.yaml` — NSQL 欄位語意對映
+- `ui_terminology.csv` — UI 術語 i18n
+- `ai_prompts.yaml` — OpenAI prompt templates(per DEV_R053)
+- `marketing_strategies.yaml` — 行銷策略 display content(per DEV_R050)
+- `product_master_fields.yaml` — product master per-field policy(per MP155)
+
+**Binding-discipline strength**:**Medium**
+
+- DOC_R009 三層同步觸發 only if principle 本身改動(yaml 內容改不必 sync principle)
+- IC_P002 cross-company verification **不必**(per-co customization 是常態)
+- 改動 commit message 含 `Refs <binding-principle>` trailer 即可
+- Principle binding 可 collectively pin(`binds: 30_global_data/parameters/scd_type2/*.yaml`)
+
+## Existing Tier-2 File Inventory
+
+下表列出 codebase 既有 Tier-2 files,標 binding 狀態(2026-04-27 audit 時點)。後續逐個補 binding gap 屬獨立 follow-up changes,不在本 change scope。
+
+| File path (from `shared/`) | Category | Binding status | Binding principle |
+|---|---|---|---|
+| `global_scripts/30_global_data/parameters/scd_type1/db_paths.yaml` | B (Path Registry) | **strong** | DM_R062 |
+| `global_scripts/00_principles/docs/.../etl_schemas/core_schemas.yaml` | A (Schema Contract) | **weak** (will be upgraded by glue-layer-prerawdata-bridge change) | MP102 (concept reference; explicit `binds:` will be added) |
+| `global_scripts/00_principles/docs/.../etl_schemas/schema_registry.yaml` | A (Schema Contract) | **weak** | MP102 |
+| `global_scripts/00_principles/docs/.../etl_schemas/transformed_schemas.yaml` | A (Schema Contract) | **weak** | MP102 |
+| `global_scripts/00_principles/docs/.../etl_schemas/platform_extensions/cbz_extensions.yaml` | A (Schema Contract) | **weak** | MP102 |
+| `global_scripts/00_principles/docs/.../etl_schemas/platform_extensions/eby_extensions.yaml` | A (Schema Contract) | **weak** | MP102 |
+| `global_scripts/30_global_data/parameters/scd_type1/product_master_fields.yaml` | C (Dictionary) | **medium** | MP155 (concept reference; explicit `binds:` will be added in follow-up) |
+| `global_scripts/30_global_data/parameters/scd_type2/chinese_labels.yaml` | C (Dictionary) | **medium** | DEV_R052 (concept reference; explicit `binds:` will be added in follow-up) |
+| `global_scripts/30_global_data/parameters/scd_type2/brand_aliases.yaml` | C (Dictionary) | **missing** | (no binding principle yet — follow-up needed) |
+| `global_scripts/30_global_data/parameters/scd_type2/column_aliases.yaml` | C (Dictionary) | **missing** | (NSQL aliases pattern; follow-up principle needed) |
+| `global_scripts/30_global_data/parameters/scd_type1/ai_prompts.yaml` | C (Dictionary) | **medium** | DEV_R053 (concept reference; explicit `binds:` will be added in follow-up) |
+| `global_scripts/30_global_data/parameters/marketing_strategies.yaml` | C (Dictionary) | **missing** | DEV_R050 (concept reference; principle exists but `binds:` missing) |
+| `global_scripts/11_rshinyapp_utils/translation/ui_terminology.csv` | C (Dictionary) | **medium** | DEV_R052 (concept reference; explicit `binds:` will be added in follow-up) |
+
+**Inventory totals**: 13 files identified. Strong binding: 1; Weak binding: 5; Medium binding: 5 (with concept reference but missing explicit `binds:` field); Missing binding: 3.
+
+**Backlog priority** (suggested,non-binding):
+1. **Highest**:Category A 的 5 個 weak-binding files(影響 ETL data integrity 跨所有公司)— 由 #489 glue-layer-prerawdata-bridge change 一次處理
+2. **Medium**:Category C 的 5 個 medium-binding files(per-co UX 影響)— 各自獨立 follow-up changes
+3. **Lower**:Category C 的 3 個 missing-binding files(可能需先寫新 binding principle)
+
+## Anti-Patterns
+
+以下違反 MP156 的常見模式:
+
+### A1: Tier-2 file 改動沒走 binding principle 的 change discipline
+
+**Behavior**:PR 修改 `core_schemas.yaml` 加新欄位,但沒檢查 MP102 / 沒跑 DOC_R009 三層同步 / 沒在 commit 提 `Refs MP102` trailer。
+
+**Consequence**:Layer 2 yaml(`llm/CH09_database.yaml`)+ Layer 3 quick reference(`.claude/rules/02-coding.md`)變 stale,AI agents 讀 principle 時拿到過時 context;reviewer 沒有 trace 知道這個 schema 改動是否 cross-co verified。
+
+**Real example**:`core_schemas.yaml` 既有的 weak binding 就是這類:MP102 沒 pin 檔名 → 改檔的 PR 不會自動觸發 MP102 review。
+
+### A2: Tier-1 principle 不 explicit pin Tier-2 檔名
+
+**Behavior**:Principle .qmd 提及概念(如 "schema registry pattern", "uses brand alias dictionary")但沒列具體檔案路徑。
+
+**Consequence**:Binding 變成「精神上」existing 而非 enforced;Tier-2 file 改動沒人意識到該回頭 review principle;新加 Tier-2 file 沒人知道該掛哪個 principle 下。
+
+**Real example**:MP102 的 body 提 "schema registry pattern" / "Documented in schema registry" 但沒寫 "binds: core_schemas.yaml"。修復是 #489 amend MP102 加 binding section 的工作。
+
+### A3: Tier-2 file 散在 docs/ 而非 code chapter,production code 不 import
+
+**Behavior**:Schema spec / canonical config 放在 `00_principles/docs/.../etl_schemas/` 等 docs/ 路徑下。
+
+**Consequence**:`00_principles/docs/` 語意上是「文件」不是「production source-of-truth」,production R / Python code 不會去 docs/ 找 spec → spec 形同 advisory,enforcement 落空。grep `core_schemas` 在 `shared/{global_scripts,update_scripts}/` 排除 docs/ 後零 hit 就是這個結果。
+
+**Real example**:`core_schemas.yaml` (518 行 spec) 住 `00_principles/docs/.../etl_schemas/`,production ETL 沒 import,enforcement gap。
+
+### A4: 多重 binding 衝突未明確 primary
+
+**Behavior**:Tier-2 file 同時被 N 個 principle 概念上 reference,但沒 explicit 哪個是 primary binding。
+
+**Consequence**:改該 file 時不知道走哪個 principle 的 Change Discipline;binding inventory 重複計算;新 reviewer / AI 困惑。
+
+**Hypothetical example**:`product_master_fields.yaml` 同時 reference MP155(field_class)+ MP102(field 對應 schema 欄位)+ MP154(per-field arbitration policy)。沒 primary 標記時,改 file 該走哪個 principle 的 discipline 不明。修復是 MP156 規定 primary binding rule,其他 principle 走 cross-reference。
+
+### A5: Pre-commit / runtime hook 過早 enforce,over-block 合法 yaml 改動
+
+**Behavior**:寫 PreToolUse hook 偵測到 yaml file 改動就強制要求 trigger 全部 Change Discipline 動作(DOC_R009 + IC_P002 + ...),不分 typo fix vs schema-breaking change。
+
+**Consequence**:合法的小改(typo / 加註解 / 加 alias)被 over-block,reviewer 變得 friction-heavy → 反而避免改 yaml,knowledge 累積在 R code 內,違背 Tier-2 normativity 初衷。
+
+**Why MP156 v1.0 暫不寫 hook**:enforcement 靠 code review + AI awareness 已足夠 for current scale(~5 公司);hook 寫死的 heuristic 容易 over-block。等若真有 incident 證明 review-only 不夠,再寫 fine-grained hook。
+
+## Relationships
+
+- **MP155 (Minimize Human Input,2026-04-25 created)** — sister Meta-Principle following same stand-alone change pattern。MP155 規範「人/AI 責任邊界」,MP156 規範「規範性層級邊界」。兩者 orthogonal:MP155 處理「該不該人輸」,MP156 處理「規範該寫哪 / 改該觸發什麼」。MP155 的 `product_master_fields.yaml` 是 MP156 Category C 的 example。
+- **DOC_R009 (Principle Triple-Layer Sync)** — invoked by MP156 Change Discipline。Tier-1 principle 自身改動觸發 DOC_R009;Tier-2 file 改動可能間接觸發(若 binding principle 也跟著改)。
+- **IC_P002 (Cross-Company Verification)** — invoked for Category A (Schema Contracts) + Category B (Path Registries) 的 Tier-2 changes;Category C (Dictionaries) 通常不必。
+- **SO_P018 (Directory Governance)** — supplementary。MP156 不取代 SO_P018(SO_P018 規範哪些目錄能存在),MP156 在其上層加 binding semantics(yaml/csv/sql 在 allowed dirs 內如何被 principle pin 住)。
+- **MP102 (ETL Output Standardization Principle)** — cited as the first canonical example to be amended in `glue-layer-prerawdata-bridge` change(#489)。MP102 將獲得 `binds:` frontmatter + Files Bound section + Change Discipline section,把 `core_schemas.yaml` 的 weak binding 升級為 strong。
+- **DM_R062 (Canonical DB Path Enforcement)** — already exhibits MP156 strong binding(subtitle 字面 pin `db_paths.yaml`);MP156 把這個 ad-hoc pattern 形式化成普遍規則。
+
+## Non-Goals
+
+- ❌ **不**搬動 `core_schemas.yaml` 等 Tier-2 files 物理位置(屬 #489 `glue-layer-prerawdata-bridge` change)
+- ❌ **不** amend MP102 加 `binds:`(屬 #489 `glue-layer-prerawdata-bridge` change)
+- ❌ **不**為 Inventory 中 13 個 file 全部補 binding principle(本 change 只 inventory + 標 binding-gap;補 binding 由各家後續獨立 changes)
+- ❌ **不**新增 PreToolUse hook 自動偵測 Tier-2 file 改動(per Anti-Pattern A5,deferred enhancement)
+- ❌ **不**改 SO_P018 governance spec(MP156 supplementary,不取代既有 directory governance)
+- ❌ **不**新建 enforcement code(本 change doc-only,enforcement 靠 code review + AI awareness)
+
+## Examples
+
+### Strong Binding Example (existing): DM_R062 ↔ db_paths.yaml
+
+```yaml
+---
+id: "DM_R062"
+title: "Canonical DB Path Enforcement"
+subtitle: "資料檔案必須放在 db_paths.yaml 定義的 canonical 路徑;發現錯位置時移動資料,不改程式"
+type: "Rule"
+binds:
+  - "shared/global_scripts/30_global_data/parameters/scd_type1/db_paths.yaml"
+---
+```
+
+DM_R062 已展現完整三段式 binding:frontmatter `binds:` + body Rule section 引用具體檔案 + 改動 discipline 隱含在 body Rationale。MP156 把這個 ad-hoc pattern 形式化。
+
+### Strong Binding Example (target by #489): MP102 ↔ core_schemas.yaml
+
+After amendment in `glue-layer-prerawdata-bridge` change:
+
+```yaml
+---
+id: "MP102"
+title: "ETL Output Standardization Principle"
+binds:
+  - "shared/global_scripts/01_db/raw_schema/_authoring/core_schemas.yaml"
+  - "shared/global_scripts/01_db/raw_schema/_authoring/schema_registry.yaml"
+  - "shared/global_scripts/01_db/raw_schema/_authoring/transformed_schemas.yaml"
+  - "shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/*.yaml"
+---
+```
+
+加上 body `## Files Bound by This Principle` + `## Change Discipline` sections 後,從 weak binding 升級為 strong。
+
+### Cross-Reference Example: product_master_fields.yaml
+
+`product_master_fields.yaml` primary binding 是 **MP155**(因 yaml 內 `field_class:` 三類分類來自 MP155 Three Categories);**cross-references** 含 MP102(field 對應 schema 欄位)、MP154(per-field arbitration policy)。Cross-reference 在 MP155 body `## Relationships` 提及,不在 MP155 `binds:` 列。改 yaml 時走 MP155 的 Change Discipline,但 reviewer 自然會 cross-check MP102 + MP154 是否相容。
+
+## Decision Framework for New Tier-2 Files
+
+新增任何 yaml/csv/SQL contract file 時,設計者 SHALL 走以下 4 個問題:
+
+1. **Q1: Tier 邊界判定** — 這個 file 是規範系統行為(contract / schema / canonical mapping),還是描述某次計算的中間結果?
+   - 規範行為 → Tier-2,繼續 Q2
+   - 中間結果 → Non-normative,放在 chapter dir,不需要 binding principle
+2. **Q2: Category 判定** — 屬 A (Schema Contract) / B (Path Registry) / C (Dictionary) 哪一類?
+   - 影響 ETL data integrity 跨公司 → A
+   - 影響 file/path/endpoint 物理位置 → B
+   - 影響 UI 文字 / 對映 / prompt → C
+3. **Q3: Binding Principle 判定** — 該歸哪個既有 principle 下?
+   - Has matching principle → 把這個 file 加進該 principle `binds:` + body section
+   - No matching principle → **先寫新 principle**,再加 binding(blocking constraint)
+4. **Q4: Change Discipline 判定** — 改該 file 需要觸發什麼?
+   - Category A/B → DOC_R009 三層同步 + IC_P002 cross-co verify + commit trailer
+   - Category C → DOC_R009 only if principle changes;`Refs <principle>` trailer
+
+## Conformance
+
+To conform with MP156:
+
+- New Tier-2 file SHALL have a binding Tier-1 principle from creation(not retrofit)
+- Existing weak/missing-binding Tier-2 file SHALL be inventoried(本 .qmd Inventory section 履行此要求 for current snapshot)
+- Tier-1 principle 的 `binds:` field 一旦列出,改該 bound file 觸發 principle's Change Discipline,不再可選
+- AI agents 識別 Tier-2 file 改動時 SHALL look up binding principle 的 Change Discipline,主動 invoke 同步動作

@@ -1,0 +1,64 @@
+# MP165 v1.3 DRV-Output Shape Contracts — D_RACING (技詮賽車精品)
+# Spectra change: mp165-drv-output-shape-gate (#668)
+#
+# Gate: shared/global_scripts/23_deployment/drv_output_shape_gate.R
+# Active platforms per app_config.yaml > pipeline > platforms: amz only
+# DRV groups: D00, D01, D03, D05 (NO D04 — Poisson disabled)
+#
+# Severity choices (2026-05-14 baseline):
+#   - DNA tables (D01): critical, well-populated
+#   - Macro tables (D05): critical
+#   - Position tables (D03): WARNING — `df_position` does not exist
+#     in current app_data (BrandEdge not yet wired). Gate will surface
+#     this gap; upgrade to critical when BrandEdge ships.
+#   - Poisson tables (D04): NOT declared — D04 absent from drv_groups
+#     (declarative opt-out per MP165 v1.0). Refs #661 (D_RACING amz
+#     DRV pipeline not run at all — separate effort).
+#
+# Sunset: 2026-06-13 (per MP165 v1.3 default)
+
+company: D_RACING
+
+drv_contracts:
+
+  amz:
+
+    # --- D01: Customer DNA Analysis ---
+    df_dna_by_customer:
+      l2_row_count_min: 5000
+      severity: critical
+
+    df_dna_category_counts:
+      l2_row_count_min: 30
+      severity: critical
+
+    df_dna_plot_data:
+      l2_row_count_min: 1000
+      severity: critical
+
+    df_dna_summary_stats:
+      l2_row_count_min: 10
+      severity: critical
+
+    df_profile_by_customer:
+      l2_row_count_min: 1000
+      severity: critical
+
+    df_product_line_profile:
+      l2_row_count_min: 5
+      severity: critical
+
+    # --- D05: Macro Trend Analysis ---
+    df_macro_monthly_summary:
+      l2_row_count_min: 12
+      severity: critical
+
+    # --- D03: Positioning Analysis ---
+    # `df_position` does not yet exist for D_RACING (BrandEdge not wired).
+    # Warning severity so the gate surfaces the gap without blocking.
+    df_position:
+      l2_row_count_min: 10
+      severity: warning
+
+# Per-company opt-in to strict-mode before sunset (default false)
+strict_mode: false

@@ -1,0 +1,3471 @@
+# glue-era-etl-vocabulary Specification
+
+## Purpose
+
+TBD - created by archiving change 'etl-vocabulary-realignment-glue-era'. Update Purpose after archive.
+
+## Requirements
+
+### Requirement: Canonical Schema SHALL Be Declared at Layer 1 Not 2TR Phase
+
+In post-glue era (per #489 spectra change `glue-layer-prerawdata-bridge`), canonical schema for any ETL datatype SHALL be declared in Layer 1 specifications:
+
+- `01_db/raw_schema/_authoring/core_schemas.yaml` for universal canonical schemas (sales, customers, orders, products, reviews, company_product_extension)
+- `01_db/raw_schema/_authoring/platform_extensions/<platform>_extensions.yaml` for platform-specific universal schemas
+- `01_db/raw_schema/_authoring/companies/<COMPANY>/<schema>.yaml` for company-scoped schemas (per MP161)
+
+The 2TR phase (`<platform>_ETL_<datatype>_2TR.R`) SHALL NOT introduce canonical schema mapping that wasn't already declared at Layer 1. 2TR phase scope is limited to post-canonical transformation work (date string parse, derived fields, multi-source join, business rules).
+
+#### Scenario: Future ETL author adds new datatype
+
+- **WHEN** an author proposes a new datatype `bgs` (battery glasses scene) for the amz platform
+- **THEN** the author SHALL first declare canonical schema in `core_schemas.yaml` (or `platform_extensions/amz_extensions.yaml` if platform-specific) with canonical column names like `device_id`, `battery_level`, `usage_timestamp`
+- **AND** the author SHALL NOT delegate canonical schema mapping to a future `amz_ETL_bgs_2TR.R` script — schema MUST appear at Layer 1 first
+
+#### Scenario: Existing 2TR R script duplicates schema mapping
+
+- **WHEN** code review encounters an existing `<platform>_ETL_<datatype>_2TR.R` containing `dplyr::rename()` calls that map source column names to canonical names
+- **AND** the same datatype has a corresponding bridge yaml at `bridges/<COMPANY>/<platform>/<datatype>.bridge.yaml` with canonical mapping
+- **THEN** the 2TR script's rename code SHALL be flagged as duplicate work
+- **AND** the rename code SHALL be removed during P3 migration (per `etl-architecture-roadmap` Requirement on legacy aggressive deprecation)
+
+##### Example: Pre-glue vs post-glue 2TR R script content split
+
+| Era | Schema mapping work in 2TR | Post-canonical transformation in 2TR | Total file size |
+| --- | --- | --- | --- |
+| Pre-glue | rename + coercion (~70%) | date parse + derive + join + business rules (~30%) | ~150 lines typical |
+| Post-glue (target) | (none — moved to bridge yaml) | date parse + derive + join + business rules | ~30-50 lines typical |
+
+
+<!-- @trace
+source: etl-vocabulary-realignment-glue-era
+updated: 2026-05-11
+code:
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B092QN563N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FS5TCR3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0DXN7Y9YP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202502.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0DXTPHL8F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0D7W3G6G9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202504.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FCBWYHS6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07B7S9X3N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07HXK5J58.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BXT859DN.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0CJZ96983.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0115I2DRI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0CGHWFF71.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FHKR48NR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B08P51WYLS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B098BFT3CF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202512.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0F4R3QMKX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FD3LMQ3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B09QFRN3D5.xlsx
+  - .agents/skills/spectra-apply/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07HXK5J58.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CYQ4HF4P.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B09YH1L75X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FGLF3SDT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B086DRDHKC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DCMHTXJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0CYBRY5XP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07S2B6N31.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202505.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B083QHKD16.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0CF54LS3T.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202506.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202410.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202601.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BVQDYVTS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BY18J8D9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0CYBRY5XP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07B7QB3WD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY3PWWTQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0G325KH21.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWY9BV9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0FVKQWNNJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09Z258LKR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DRBDGJCB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FNN541XB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DR89DWPY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202505.txt
+  - QEF_DESIGN
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CDNQ62ML.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B087LZDD59.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202308.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CYZH2XC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07XLLBB5J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B087LZDD59.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0CY1G176K.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0DNPDG19C.xlsx
+  - psychquant-claude-plugins-src/
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CJ2Z5XWY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DJW8J1L6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0BQQJKYDL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07SRCS8YZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GDCRLXVR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B016JNKVHI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202408.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FCBWYHS6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202311.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0D46JYD7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09F98J1GS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0CXJ2GP6C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FHKR48NR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0G2YSNSPW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FRMTD2YB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B09XLGLX5G.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FCG1FFVL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0B243H6QX.xlsx
+  - .agents/skills/new-company/templates/CLAUDE_template.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07YFFLDQB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0F68QG91J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0C72RBR38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0G5JTRNH6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202503.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FKG6WN38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY4LX65R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DWX1J8D6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DCMNN9RP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0G2H1FZ73.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FYGVHX32.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FHHXHMM8.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B4NN7GL7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0B12WD6MV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07B7S9X3N.xlsx
+  - WISER
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202302.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202303.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0F7XG72DT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202406.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202502.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GFF1QTC2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B6B6K4YD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202410.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B00JWP8F3I.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FP2Y66VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FCYBJK6T.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FQ3G4HYB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B089W594LC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTCGQSC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0G1Z1QKJ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0DJ3JR93D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08WTG6RCJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FP2ZGR4C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0GD73TXJC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07XLLBB5J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0823RGKHS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BC1P11Q3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FQ3G4HYB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0F7XG72DT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FL77VTPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BC1P11Q3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B07SSRDCHT.xlsx
+  - .agents/skills/pipeline-health/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07NW44F6Q.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FR8CNDJV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202409.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B09YH1L75X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FN3Q33TB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B001MBV4V0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B001K85BN2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07NW44F6Q.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0CTQ68LH8.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0FVKQWNNJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FD3LMQ3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FQWLR3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B09FS5ZVXK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0G2YSNSPW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0DNPDG19C.xlsx
+  - .agents/skills/spectra-discuss/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GHS5T1Y3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B096VP4L1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FKFXCT5X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07FFGYWJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FVG4YZP3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0B243H6QX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B086W36F2W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07ZQV252K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CM24DF1R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B01K73KIMO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202305.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CQB9Y9LR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B06XNQH196.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07YW4RBQP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08B659G81.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0D97YBP2X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0BK93C994.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DLWK7YQH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B012KVI4YU.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202501.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FR8CNDJV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B09HZTKLNP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B07LGMG4B6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202404.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202411.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BHL8TS7F.xlsx
+  - .agents/skills/spectra-debug/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GG9L5Y7J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0CQKZ3N5G.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FQW4KWRD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B074N6RHP6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07VYJ6SKS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0115I2DRI.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0D7W3G6G9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202307.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0CNYJVWMB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FK2LLB86.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0D5QZGZ39.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0C72RBR38.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0G1Z1QKJ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202407.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0DJ3JR93D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B005BLYF0O.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B001MBV4U6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B079MN2G6N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F99F11BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B015SGHFO4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B08P4HHSZT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FRDKKFR3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B001K85BNC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09Z258LKR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0DXN7Y9YP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202509.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0G4CXGMNW.xlsx
+  - .agents/skills/new-company/checklist.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GG9L5Y7J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BKQ9F14X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B001MBV4V0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202412.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0D6KLHHW3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0F483XM9C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DRBDGJCB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BVVKKXFZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FC5DV7BH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B084VK7VC2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0CXJ2GP6C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FJS3TF3V.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202411.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DCVSRNN1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FS5TCR3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C8SBYXPQ.xlsx
+  - .claude
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B017GRRSB8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FK2LLB86.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202511.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202402.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FX4NX6HM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0DXTPHL8F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0D2DRS9KY.xlsx
+  - kitchenMAMA
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BVQDYVTS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BQ1GZY7H.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07QZGP562.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0F32PSK95.xlsx
+  - .playwright-mcp/console-2026-03-06T00-49-19-181Z.log
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BQ1GZY7H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B09XVP6YPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FK9ZN46W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07XTLC91J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B089W594LC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BSTWJL9L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09V5PDTSD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07ZQVT7GJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BPXVV4T7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B075N83693.xlsx
+  - .agents/skills/spectra-propose/SKILL.md
+  - l4_enterprise.code-workspace
+  - URBANER/rawdata_Urbaner/amazon_demographic/US_Demographics_Simple_Month_2024_01_31.csv
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B01B5JCT4E.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FNN541XB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0F2RSTDSJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B08LGGMP5W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BY1KRJZ1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202511.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08WTG6RCJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BX2RBN4X.xlsx
+  - D_RACING
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0CF54LS3T.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0B12WD6MV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B00FU6PDLU.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B00BB5YHEI.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0DKJVC5B2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09HVDD8ST.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FL77VTPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CVJ257SG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0FRYTH9W4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0DKJVC5B2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202409.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0B7R5TJLD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B005BLYF0O.xlsx
+  - .agents/skills/new-company/templates/Rproj_template
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C6LD957K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GL2DKVQH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DM3PQR51.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FJS3TF3V.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202404.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FNRSHSTX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B00JWP8F3I.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0BK93C994-.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FB212HTG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0GCZSPCDW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0BJ185758.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0B5WRKYBZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B08P9HNNCX.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0F68QG91J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B09QFRN3D5.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B5Q6FJYW.xlsx
+  - .spectra.yaml
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DFH3YPTJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GD67VCG6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FJXTP8TS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202312.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DFM6F221.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CYQVK16.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B098NSHBQK.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY4GJKJ7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CGVDNG3L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0F631Z3XH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B008KEJ1LM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FLB5X6SQ.xlsx
+  - AGENTS.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CDNQ62ML.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B09R1LXS54.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DM3PQR51.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0DSKZWWD4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0756J4R14.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BY18J8D9.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0F2RSTDSJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0F2M2NSBX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0D6KLHHW3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0GBWZBMS5.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B07W85ZPL1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B003TW70E0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B00FU6PDLU.xlsx
+  - shared/update_scripts
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0823PD6XD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0F5917D36.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0G13F42QT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FP2ZGR4C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0F2MWC94H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202509.txt
+  - .agents/skills/spectra-ask/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GDCRLXVR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B09Y52BL5D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07SZG537S.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0F62R84FS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FBVDJS29.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FP2Y66VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DLWK7YQH.xlsx
+  - shared/nsql
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07YW4RBQP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FJS3QR1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0DSGPWQH7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B083QHKD16.xlsx
+  - URBANER/rawdata_Urbaner/資料夾命名規範說明書.docx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C5F6X3VT.xlsx
+  - .agents/skills/issue/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CLGYXNMM.xlsx
+  - .agents/skills/new-company/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FKFXCT5X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07XTLC91J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GFF1QTC2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0FRYTH9W4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B084VK7VC2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0CNYJVWMB.xlsx
+  - .agents/skills/transcript-correction/references/terminology.md
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FVFD1775.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0742G961R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0F2M2NSBX.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0G4SH3ZL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0G2H1FZ73.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0CY1G176K.xlsx
+  - URBANER/rawdata_Urbaner/SKUtoeBay numbers/SKUtoASIN number.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0BRNJ14YJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202406.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FNRSHSTX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0C5RXT52J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0D2DRS9KY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0BGJHMJHW.xlsx
+  - .agents/skills/spectra-commit/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09QLVGVJJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B09Y52BL5D.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B092QN563N.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0C5D4QVLJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07NPBQSKY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B09R1LXS54.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FS1TX2XL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B6F1G63Z.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DP2T4NSK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202310.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202304.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CT5CDBL2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0GHS5T1Y3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FHXTJ8JN.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0GBWZBMS5.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0F32PSK95.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08NWTM5HQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0F5917D36.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0C5RXT52J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CM24DF1R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BBLJFS55.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FBVDJS29.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F5VJD5DQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DWK397VF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202503.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWXDSJ9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202507.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B093HJJV9L.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0BZ3R6MZ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202407.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B09XVP6YPM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTKLDYX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202506.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202301.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FRDKKFR3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0CX8SWZ57.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FCG1FFVL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202412.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B075N83693.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0CX8SWZ57.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CVJ257SG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B08P51WYLS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DMSRY4N3.xlsx
+  - .agents/skills/setup-etl-source/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DLBB3VRB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B09MKF3RPW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0D5HLHFNB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F99F11BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FK9ZN46W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B09Q5BQ9FM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B086W2L7LZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B01M0QJ2MO.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0G13F42QT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C8SBYXPQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0B96LD4X4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07B7QB3WD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY3PWWTQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09QLVGVJJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07CY1YVL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09R9YJL27.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FKG6WN38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DLBB3VRB.xlsx
+  - .agents/skills/spectra-archive/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B09XLGLX5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B074N6RHP6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B07W85ZPL1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FL267TCG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0D958SN5L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B086W2L7LZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FX4NX6HM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BHL8TS7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07FFGYWJ6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07ZQV252K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0D97YBP2X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B01K73KIMO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202306.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B06XNQH196.xlsx
+  - .playwright-mcp/console-2026-03-06T00-49-10-858Z.log
+  - .agents/skills/codex-review/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0C5D4QVLJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202309.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FGLF3SDT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FB212HTG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B08LGGMP5W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0G4CXGMNW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BX2RBN4X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FHHXHMM8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0DSGPWQH7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0C72S38F3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B09FS5ZVXK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CLWL76HK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0G1Z7TYB7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FN3Q33TB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0D958SN5L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B4WPWDVW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B08P4HHSZT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BPXVV4T7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0BZ3R6MZ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0C2Y71YXV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0G4R26XSY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0CGHWFF71.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BTJWSGXV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0756J4R14.xlsx
+  - URBANER/rawdata_Urbaner/KEYS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CLGYXNMM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B09Q5BQ9FM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FRMTD2YB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CQB9Y9LR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DT1227QM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B001K85BN2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2026/202602.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202507.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B003TW70E0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0GD73TXJC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0BQQJKYDL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202501.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DR89DWPY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09WHTH3ZX.xlsx
+  - .agents/skills/new-company/templates/gitignore_template
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DCMNN9RP.xlsx
+  - .agents/skills/new-company/templates/app_R_template
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CT5CDBL2.xlsx
+  - .agents/skills/spectra-ingest/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DWX1J8D6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0BRNJ14YJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B08P9HNNCX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CZ3KDN9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GLJRLS5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202510.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FNDLD746.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0823RGKHS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B016JNKVHI.xlsx
+  - .agents/skills/suggestion-report/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0G1Z7TYB7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0C3LBYPMZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FCYBJK6T.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B086DRDHKC.xlsx
+  - .agents/skills/new-company/templates/Rprofile_template
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202405.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BKQ9F14X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09WHTH3ZX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B01HRSZRXM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DT1227QM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B098BFT3CF.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09V5PDTSD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F66FZHY3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B086RHFJJV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FJXTP8TS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FC5DV7BH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GL2GP74J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B015SGHFO4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0GLJRLS5G.xlsx
+  - .agents/skills/new-company/templates/env_template
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DFH3YPTJ.xlsx
+  - .agents/skills/new-company/templates/README_template.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FVG4YZP3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202504.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B092H8XHDG.xlsx
+  - shared/global_scripts
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B4WPWDVW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B5Q6FJYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B6F1G63Z.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202405.txt
+  - URBANER/rawdata_Urbaner/產品KEYS命名規範說明書.docx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B01B5JCT4E.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0G4R26XSY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08B659G81.xlsx
+  - .agents/skills/spectra-audit/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY4LX65R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FRNDSY52.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B4NN7GL7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DCVSRNN1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FNDLD746.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BL2YWH3N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0DSKZWWD4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0D46JYD7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0BJ185758.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202508.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B6B6K4YD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CTQ1WG87.xlsx
+  - MAMBA
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0CTQ68LH8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0BGJHMJHW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B01HRSZRXM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C6LD957K.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0F631Z3XH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BNKRNS85.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B004EBU3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FJS3QR1W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY4GJKJ7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B07YFFLDQB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0C72S38F3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F5VJD5DQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202408.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07Q34D62F.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B01N5CAOZA.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GD67VCG6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BY1KRJZ1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FHXTJ8JN.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0BHYZV3HY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FYGVHX32.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B00BB5YHEI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FRNDSY52.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B004EBU3BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07CY1YVL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DDBY1X2M.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B09HZTKLNP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0F4R3QMKX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07GGGJHZW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B096VP4L1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B09MKF3RPW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWWPLCP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202403.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07Q34D62F.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B07LGMG4B6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTCGQSC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FVFD1775.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0CQKZ3N5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0742G961R.xlsx
+  - .agents/skills/transcript-correction/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DCMHTXJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0F483XM9C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08NWTM5HQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FLB5X6SQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0DMNLL13F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07NPBQSKY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0D5HLHFNB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B01M0QJ2MO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWWPLCP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09R9YJL27.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BBLJFS55.xlsx
+  - URBANER/rawdata_Urbaner/amazon_demographic/US_Demographics_Simple_Month_2024_02_29.csv
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWY9BV9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07QZGP562.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FXMGVCYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B079MN2G6N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FL267TCG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B098NSHBQK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B008KEJ1LM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B001MBV4U6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0C3LBYPMZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B092H8XHDG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BTJWSGXV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FS1TX2XL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BNKRNS85.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0F997FHHR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0C2Y71YXV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B086RHFJJV.xlsx
+  - .agents/skills/transcript-action-items/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DWK397VF.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0B7R5TJLD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWXDSJ9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202401.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B017GRRSB8.xlsx
+  - .agents/skills/add-principle/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0BHYZV3HY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DP2T4NSK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07ZQVT7GJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CYQ4HF4P.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CTQ1WG87.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07VYJ6SKS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09F98J1GS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B093HJJV9L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DMSRY4N3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B01N5CAOZA.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B07SSRDCHT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0D5QZGZ39.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTY4PWF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202403.txt
+  - .agents/skills/new-company/templates/app_config_template.yaml
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0G492LXS9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BXT859DN.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DJW8J1L6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2026/202601.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202602.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CLWL76HK.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F66FZHY3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07GGGJHZW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202508.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0G5JTRNH6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B001K85BNC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0DSB44YJZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FQWLR3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DFM6F221.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0G4SH3ZL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09HVDD8ST.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B098P6164W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0F62R84FS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B086W36F2W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTKLDYX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07SZG537S.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FXMGVCYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CGVDNG3L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202510.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FQW4KWRD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0B96LD4X4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BSTWJL9L.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTY4PWF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0G325KH21.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0DMNLL13F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0B5WRKYBZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0F2MWC94H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CJ2Z5XWY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DDBY1X2M.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07SRCS8YZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B012KVI4YU.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B098P6164W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C5F6X3VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202512.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0F997FHHR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0CJZ96983.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0GCZSPCDW.xlsx
+-->
+
+---
+### Requirement: 0IM Phase MAY Be Implemented as Bridge YAML or R Script
+
+The 0IM (Import) phase of an ETL pipeline MAY be implemented as either:
+
+- **Legacy form**: An R script at `update_scripts/ETL/<platform>/<platform>_ETL_<datatype>_0IM.R` that performs source ingestion via R code
+- **Post-glue form**: A bridge yaml at `bridges/<COMPANY>/<platform>/<datatype>.bridge.yaml` interpreted by `fn_glue_bridge.R`, where the bridge yaml output goes to the same physical layer (raw_data.duckdb)
+
+Both forms produce raw-layer table `df_<platform>_<datatype>___raw`. They are functionally interchangeable at the physical layer. Authors choose based on:
+
+- **Legacy form** if the datatype predates glue-era and migration has not yet reached this datatype
+- **Post-glue form** for new datatypes or migrated datatypes (per P3 child change `legacy-etl-aggressive-deprecation`)
+
+During the migration window, both forms MAY co-exist for different datatypes within the same platform.
+
+#### Scenario: ETL author chooses 0IM form for new datatype
+
+- **WHEN** an ETL author starts work on a new datatype that does not yet exist
+- **THEN** the author SHALL prefer the post-glue bridge yaml form
+- **AND** SHALL NOT introduce a new legacy R script unless the bridge yaml form is technically incompatible with the source format
+
+#### Scenario: Legacy 0IM R script and bridge yaml exist for same datatype
+
+- **WHEN** during migration window, a datatype has both `<platform>_ETL_<datatype>_0IM.R` and `bridges/<COMPANY>/<platform>/<datatype>.bridge.yaml`
+- **THEN** the bridge yaml SHALL be considered the authoritative form
+- **AND** the legacy R script SHALL be archived to `99_archived/legacy_etl_pre_glue/` as part of the per-datatype migration completion (per P3 child change)
+
+
+<!-- @trace
+source: etl-vocabulary-realignment-glue-era
+updated: 2026-05-11
+code:
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B092QN563N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FS5TCR3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0DXN7Y9YP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202502.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0DXTPHL8F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0D7W3G6G9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202504.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FCBWYHS6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07B7S9X3N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07HXK5J58.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BXT859DN.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0CJZ96983.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0115I2DRI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0CGHWFF71.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FHKR48NR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B08P51WYLS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B098BFT3CF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202512.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0F4R3QMKX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FD3LMQ3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B09QFRN3D5.xlsx
+  - .agents/skills/spectra-apply/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07HXK5J58.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CYQ4HF4P.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B09YH1L75X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FGLF3SDT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B086DRDHKC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DCMHTXJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0CYBRY5XP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07S2B6N31.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202505.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B083QHKD16.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0CF54LS3T.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202506.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202410.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202601.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BVQDYVTS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BY18J8D9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0CYBRY5XP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07B7QB3WD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY3PWWTQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0G325KH21.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWY9BV9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0FVKQWNNJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09Z258LKR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DRBDGJCB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FNN541XB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DR89DWPY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202505.txt
+  - QEF_DESIGN
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CDNQ62ML.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B087LZDD59.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202308.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CYZH2XC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07XLLBB5J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B087LZDD59.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0CY1G176K.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0DNPDG19C.xlsx
+  - psychquant-claude-plugins-src/
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CJ2Z5XWY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DJW8J1L6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0BQQJKYDL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07SRCS8YZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GDCRLXVR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B016JNKVHI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202408.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FCBWYHS6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202311.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0D46JYD7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09F98J1GS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0CXJ2GP6C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FHKR48NR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0G2YSNSPW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FRMTD2YB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B09XLGLX5G.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FCG1FFVL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0B243H6QX.xlsx
+  - .agents/skills/new-company/templates/CLAUDE_template.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07YFFLDQB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0F68QG91J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0C72RBR38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0G5JTRNH6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202503.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FKG6WN38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY4LX65R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DWX1J8D6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DCMNN9RP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0G2H1FZ73.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FYGVHX32.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FHHXHMM8.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B4NN7GL7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0B12WD6MV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07B7S9X3N.xlsx
+  - WISER
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202302.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202303.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0F7XG72DT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202406.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202502.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GFF1QTC2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B6B6K4YD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202410.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B00JWP8F3I.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FP2Y66VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FCYBJK6T.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FQ3G4HYB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B089W594LC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTCGQSC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0G1Z1QKJ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0DJ3JR93D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08WTG6RCJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FP2ZGR4C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0GD73TXJC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07XLLBB5J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0823RGKHS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BC1P11Q3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FQ3G4HYB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0F7XG72DT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FL77VTPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BC1P11Q3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B07SSRDCHT.xlsx
+  - .agents/skills/pipeline-health/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07NW44F6Q.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FR8CNDJV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202409.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B09YH1L75X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FN3Q33TB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B001MBV4V0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B001K85BN2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07NW44F6Q.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0CTQ68LH8.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0FVKQWNNJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FD3LMQ3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FQWLR3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B09FS5ZVXK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0G2YSNSPW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0DNPDG19C.xlsx
+  - .agents/skills/spectra-discuss/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GHS5T1Y3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B096VP4L1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FKFXCT5X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07FFGYWJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FVG4YZP3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0B243H6QX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B086W36F2W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07ZQV252K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CM24DF1R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B01K73KIMO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202305.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CQB9Y9LR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B06XNQH196.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07YW4RBQP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08B659G81.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0D97YBP2X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0BK93C994.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DLWK7YQH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B012KVI4YU.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202501.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FR8CNDJV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B09HZTKLNP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B07LGMG4B6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202404.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202411.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BHL8TS7F.xlsx
+  - .agents/skills/spectra-debug/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GG9L5Y7J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0CQKZ3N5G.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FQW4KWRD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B074N6RHP6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07VYJ6SKS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0115I2DRI.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0D7W3G6G9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202307.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0CNYJVWMB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FK2LLB86.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0D5QZGZ39.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0C72RBR38.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0G1Z1QKJ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202407.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0DJ3JR93D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B005BLYF0O.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B001MBV4U6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B079MN2G6N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F99F11BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B015SGHFO4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B08P4HHSZT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FRDKKFR3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B001K85BNC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09Z258LKR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0DXN7Y9YP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202509.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0G4CXGMNW.xlsx
+  - .agents/skills/new-company/checklist.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GG9L5Y7J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BKQ9F14X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B001MBV4V0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202412.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0D6KLHHW3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0F483XM9C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DRBDGJCB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BVVKKXFZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FC5DV7BH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B084VK7VC2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0CXJ2GP6C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FJS3TF3V.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202411.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DCVSRNN1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FS5TCR3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C8SBYXPQ.xlsx
+  - .claude
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B017GRRSB8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FK2LLB86.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202511.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202402.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FX4NX6HM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0DXTPHL8F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0D2DRS9KY.xlsx
+  - kitchenMAMA
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BVQDYVTS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BQ1GZY7H.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07QZGP562.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0F32PSK95.xlsx
+  - .playwright-mcp/console-2026-03-06T00-49-19-181Z.log
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BQ1GZY7H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B09XVP6YPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FK9ZN46W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07XTLC91J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B089W594LC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BSTWJL9L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09V5PDTSD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07ZQVT7GJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BPXVV4T7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B075N83693.xlsx
+  - .agents/skills/spectra-propose/SKILL.md
+  - l4_enterprise.code-workspace
+  - URBANER/rawdata_Urbaner/amazon_demographic/US_Demographics_Simple_Month_2024_01_31.csv
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B01B5JCT4E.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FNN541XB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0F2RSTDSJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B08LGGMP5W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BY1KRJZ1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202511.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08WTG6RCJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BX2RBN4X.xlsx
+  - D_RACING
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0CF54LS3T.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0B12WD6MV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B00FU6PDLU.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B00BB5YHEI.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0DKJVC5B2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09HVDD8ST.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FL77VTPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CVJ257SG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0FRYTH9W4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0DKJVC5B2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202409.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0B7R5TJLD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B005BLYF0O.xlsx
+  - .agents/skills/new-company/templates/Rproj_template
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C6LD957K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GL2DKVQH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DM3PQR51.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FJS3TF3V.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202404.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FNRSHSTX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B00JWP8F3I.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0BK93C994-.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FB212HTG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0GCZSPCDW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0BJ185758.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0B5WRKYBZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B08P9HNNCX.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0F68QG91J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B09QFRN3D5.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B5Q6FJYW.xlsx
+  - .spectra.yaml
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DFH3YPTJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GD67VCG6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FJXTP8TS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202312.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DFM6F221.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CYQVK16.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B098NSHBQK.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY4GJKJ7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CGVDNG3L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0F631Z3XH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B008KEJ1LM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FLB5X6SQ.xlsx
+  - AGENTS.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CDNQ62ML.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B09R1LXS54.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DM3PQR51.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0DSKZWWD4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0756J4R14.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BY18J8D9.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0F2RSTDSJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0F2M2NSBX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0D6KLHHW3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0GBWZBMS5.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B07W85ZPL1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B003TW70E0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B00FU6PDLU.xlsx
+  - shared/update_scripts
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0823PD6XD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0F5917D36.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0G13F42QT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FP2ZGR4C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0F2MWC94H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202509.txt
+  - .agents/skills/spectra-ask/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GDCRLXVR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B09Y52BL5D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07SZG537S.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0F62R84FS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FBVDJS29.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FP2Y66VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DLWK7YQH.xlsx
+  - shared/nsql
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07YW4RBQP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FJS3QR1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0DSGPWQH7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B083QHKD16.xlsx
+  - URBANER/rawdata_Urbaner/資料夾命名規範說明書.docx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C5F6X3VT.xlsx
+  - .agents/skills/issue/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CLGYXNMM.xlsx
+  - .agents/skills/new-company/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FKFXCT5X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07XTLC91J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GFF1QTC2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0FRYTH9W4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B084VK7VC2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0CNYJVWMB.xlsx
+  - .agents/skills/transcript-correction/references/terminology.md
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FVFD1775.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0742G961R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0F2M2NSBX.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0G4SH3ZL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0G2H1FZ73.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0CY1G176K.xlsx
+  - URBANER/rawdata_Urbaner/SKUtoeBay numbers/SKUtoASIN number.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0BRNJ14YJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202406.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FNRSHSTX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0C5RXT52J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0D2DRS9KY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0BGJHMJHW.xlsx
+  - .agents/skills/spectra-commit/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09QLVGVJJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B09Y52BL5D.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B092QN563N.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0C5D4QVLJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07NPBQSKY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B09R1LXS54.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FS1TX2XL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B6F1G63Z.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DP2T4NSK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202310.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202304.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CT5CDBL2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0GHS5T1Y3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FHXTJ8JN.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0GBWZBMS5.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0F32PSK95.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08NWTM5HQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0F5917D36.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0C5RXT52J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CM24DF1R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BBLJFS55.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FBVDJS29.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F5VJD5DQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DWK397VF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202503.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWXDSJ9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202507.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B093HJJV9L.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0BZ3R6MZ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202407.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B09XVP6YPM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTKLDYX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202506.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202301.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FRDKKFR3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0CX8SWZ57.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FCG1FFVL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202412.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B075N83693.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0CX8SWZ57.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CVJ257SG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B08P51WYLS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DMSRY4N3.xlsx
+  - .agents/skills/setup-etl-source/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DLBB3VRB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B09MKF3RPW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0D5HLHFNB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F99F11BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FK9ZN46W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B09Q5BQ9FM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B086W2L7LZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B01M0QJ2MO.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0G13F42QT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C8SBYXPQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0B96LD4X4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07B7QB3WD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY3PWWTQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09QLVGVJJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07CY1YVL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09R9YJL27.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FKG6WN38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DLBB3VRB.xlsx
+  - .agents/skills/spectra-archive/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B09XLGLX5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B074N6RHP6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B07W85ZPL1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FL267TCG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0D958SN5L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B086W2L7LZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FX4NX6HM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BHL8TS7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07FFGYWJ6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07ZQV252K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0D97YBP2X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B01K73KIMO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202306.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B06XNQH196.xlsx
+  - .playwright-mcp/console-2026-03-06T00-49-10-858Z.log
+  - .agents/skills/codex-review/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0C5D4QVLJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202309.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FGLF3SDT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FB212HTG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B08LGGMP5W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0G4CXGMNW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BX2RBN4X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FHHXHMM8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0DSGPWQH7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0C72S38F3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B09FS5ZVXK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CLWL76HK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0G1Z7TYB7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FN3Q33TB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0D958SN5L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B4WPWDVW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B08P4HHSZT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BPXVV4T7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0BZ3R6MZ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0C2Y71YXV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0G4R26XSY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0CGHWFF71.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BTJWSGXV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0756J4R14.xlsx
+  - URBANER/rawdata_Urbaner/KEYS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CLGYXNMM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B09Q5BQ9FM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FRMTD2YB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CQB9Y9LR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DT1227QM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B001K85BN2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2026/202602.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202507.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B003TW70E0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0GD73TXJC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0BQQJKYDL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202501.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DR89DWPY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09WHTH3ZX.xlsx
+  - .agents/skills/new-company/templates/gitignore_template
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DCMNN9RP.xlsx
+  - .agents/skills/new-company/templates/app_R_template
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CT5CDBL2.xlsx
+  - .agents/skills/spectra-ingest/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DWX1J8D6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0BRNJ14YJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B08P9HNNCX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CZ3KDN9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GLJRLS5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202510.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FNDLD746.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0823RGKHS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B016JNKVHI.xlsx
+  - .agents/skills/suggestion-report/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0G1Z7TYB7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0C3LBYPMZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FCYBJK6T.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B086DRDHKC.xlsx
+  - .agents/skills/new-company/templates/Rprofile_template
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202405.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BKQ9F14X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09WHTH3ZX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B01HRSZRXM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DT1227QM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B098BFT3CF.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09V5PDTSD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F66FZHY3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B086RHFJJV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FJXTP8TS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FC5DV7BH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GL2GP74J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B015SGHFO4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0GLJRLS5G.xlsx
+  - .agents/skills/new-company/templates/env_template
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DFH3YPTJ.xlsx
+  - .agents/skills/new-company/templates/README_template.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FVG4YZP3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202504.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B092H8XHDG.xlsx
+  - shared/global_scripts
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B4WPWDVW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B5Q6FJYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B6F1G63Z.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202405.txt
+  - URBANER/rawdata_Urbaner/產品KEYS命名規範說明書.docx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B01B5JCT4E.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0G4R26XSY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08B659G81.xlsx
+  - .agents/skills/spectra-audit/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY4LX65R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FRNDSY52.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B4NN7GL7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DCVSRNN1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FNDLD746.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BL2YWH3N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0DSKZWWD4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0D46JYD7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0BJ185758.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202508.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B6B6K4YD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CTQ1WG87.xlsx
+  - MAMBA
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0CTQ68LH8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0BGJHMJHW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B01HRSZRXM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C6LD957K.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0F631Z3XH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BNKRNS85.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B004EBU3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FJS3QR1W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY4GJKJ7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B07YFFLDQB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0C72S38F3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F5VJD5DQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202408.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07Q34D62F.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B01N5CAOZA.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GD67VCG6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BY1KRJZ1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FHXTJ8JN.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0BHYZV3HY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FYGVHX32.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B00BB5YHEI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FRNDSY52.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B004EBU3BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07CY1YVL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DDBY1X2M.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B09HZTKLNP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0F4R3QMKX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07GGGJHZW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B096VP4L1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B09MKF3RPW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWWPLCP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202403.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07Q34D62F.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B07LGMG4B6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTCGQSC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FVFD1775.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0CQKZ3N5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0742G961R.xlsx
+  - .agents/skills/transcript-correction/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DCMHTXJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0F483XM9C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08NWTM5HQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FLB5X6SQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0DMNLL13F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07NPBQSKY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0D5HLHFNB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B01M0QJ2MO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWWPLCP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09R9YJL27.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BBLJFS55.xlsx
+  - URBANER/rawdata_Urbaner/amazon_demographic/US_Demographics_Simple_Month_2024_02_29.csv
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWY9BV9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07QZGP562.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FXMGVCYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B079MN2G6N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FL267TCG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B098NSHBQK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B008KEJ1LM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B001MBV4U6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0C3LBYPMZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B092H8XHDG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BTJWSGXV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FS1TX2XL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BNKRNS85.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0F997FHHR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0C2Y71YXV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B086RHFJJV.xlsx
+  - .agents/skills/transcript-action-items/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DWK397VF.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0B7R5TJLD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWXDSJ9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202401.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B017GRRSB8.xlsx
+  - .agents/skills/add-principle/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0BHYZV3HY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DP2T4NSK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07ZQVT7GJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CYQ4HF4P.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CTQ1WG87.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07VYJ6SKS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09F98J1GS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B093HJJV9L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DMSRY4N3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B01N5CAOZA.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B07SSRDCHT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0D5QZGZ39.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTY4PWF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202403.txt
+  - .agents/skills/new-company/templates/app_config_template.yaml
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0G492LXS9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BXT859DN.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DJW8J1L6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2026/202601.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202602.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CLWL76HK.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F66FZHY3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07GGGJHZW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202508.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0G5JTRNH6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B001K85BNC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0DSB44YJZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FQWLR3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DFM6F221.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0G4SH3ZL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09HVDD8ST.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B098P6164W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0F62R84FS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B086W36F2W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTKLDYX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07SZG537S.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FXMGVCYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CGVDNG3L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202510.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FQW4KWRD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0B96LD4X4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BSTWJL9L.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTY4PWF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0G325KH21.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0DMNLL13F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0B5WRKYBZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0F2MWC94H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CJ2Z5XWY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DDBY1X2M.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07SRCS8YZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B012KVI4YU.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B098P6164W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C5F6X3VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202512.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0F997FHHR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0CJZ96983.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0GCZSPCDW.xlsx
+-->
+
+---
+### Requirement: 1ST and 2TR Phases SHALL NOT Duplicate Schema Mapping Work
+
+The 1ST (Stage) and 2TR (Transform) phases SHALL NOT contain code that re-maps source column names to canonical column names when a glue bridge yaml has already performed that mapping at the 0IM phase.
+
+Specifically:
+
+- 1ST phase scope SHALL be limited to: file-level encoding normalization, raw quality validation, data type sanity checks
+- 2TR phase scope SHALL be limited to: date string parsing, derived field computation (e.g., `revenue = quantity * unit_price`), multi-source joins (e.g., joining sales with customer master), business rule application (e.g., test order filtering, country code normalization)
+
+Both 1ST and 2TR SHALL trust that the raw-layer table already carries canonical column names and types per Layer 1 schema declaration.
+
+#### Scenario: 2TR R script audit during P3 migration
+
+- **WHEN** P3 migration child change inspects an existing `<platform>_ETL_<datatype>_2TR.R` for trim opportunities
+- **AND** the script contains lines like `df %>% rename(order_id = "amazon-order-id")`
+- **THEN** the rename lines SHALL be removed
+- **AND** any dependent code SHALL be updated to expect canonical names directly from the raw-layer input
+- **AND** the trimmed file SHALL be ~30-70% smaller than pre-migration (depending on how much was schema mapping)
+
+
+<!-- @trace
+source: etl-vocabulary-realignment-glue-era
+updated: 2026-05-11
+code:
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B092QN563N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FS5TCR3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0DXN7Y9YP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202502.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0DXTPHL8F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0D7W3G6G9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202504.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FCBWYHS6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07B7S9X3N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07HXK5J58.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BXT859DN.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0CJZ96983.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0115I2DRI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0CGHWFF71.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FHKR48NR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B08P51WYLS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B098BFT3CF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202512.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0F4R3QMKX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FD3LMQ3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B09QFRN3D5.xlsx
+  - .agents/skills/spectra-apply/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07HXK5J58.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CYQ4HF4P.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B09YH1L75X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FGLF3SDT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B086DRDHKC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DCMHTXJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0CYBRY5XP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07S2B6N31.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202505.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B083QHKD16.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0CF54LS3T.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202506.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202410.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202601.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BVQDYVTS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BY18J8D9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0CYBRY5XP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07B7QB3WD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY3PWWTQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0G325KH21.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWY9BV9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0FVKQWNNJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09Z258LKR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DRBDGJCB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FNN541XB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DR89DWPY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202505.txt
+  - QEF_DESIGN
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CDNQ62ML.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B087LZDD59.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202308.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CYZH2XC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07XLLBB5J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B087LZDD59.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0CY1G176K.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0DNPDG19C.xlsx
+  - psychquant-claude-plugins-src/
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CJ2Z5XWY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DJW8J1L6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0BQQJKYDL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07SRCS8YZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GDCRLXVR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B016JNKVHI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202408.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FCBWYHS6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202311.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0D46JYD7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09F98J1GS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0CXJ2GP6C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FHKR48NR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0G2YSNSPW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FRMTD2YB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B09XLGLX5G.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FCG1FFVL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0B243H6QX.xlsx
+  - .agents/skills/new-company/templates/CLAUDE_template.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07YFFLDQB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0F68QG91J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0C72RBR38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0G5JTRNH6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202503.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FKG6WN38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY4LX65R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DWX1J8D6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DCMNN9RP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0G2H1FZ73.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FYGVHX32.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FHHXHMM8.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B4NN7GL7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0B12WD6MV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07B7S9X3N.xlsx
+  - WISER
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202302.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202303.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0F7XG72DT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202406.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202502.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GFF1QTC2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B6B6K4YD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202410.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B00JWP8F3I.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FP2Y66VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FCYBJK6T.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FQ3G4HYB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B089W594LC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTCGQSC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0G1Z1QKJ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0DJ3JR93D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08WTG6RCJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FP2ZGR4C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0GD73TXJC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07XLLBB5J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0823RGKHS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BC1P11Q3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FQ3G4HYB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0F7XG72DT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FL77VTPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BC1P11Q3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B07SSRDCHT.xlsx
+  - .agents/skills/pipeline-health/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07NW44F6Q.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FR8CNDJV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202409.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B09YH1L75X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FN3Q33TB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B001MBV4V0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B001K85BN2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07NW44F6Q.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0CTQ68LH8.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0FVKQWNNJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FD3LMQ3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FQWLR3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B09FS5ZVXK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0G2YSNSPW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0DNPDG19C.xlsx
+  - .agents/skills/spectra-discuss/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GHS5T1Y3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B096VP4L1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FKFXCT5X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07FFGYWJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FVG4YZP3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0B243H6QX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B086W36F2W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07ZQV252K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CM24DF1R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B01K73KIMO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202305.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CQB9Y9LR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B06XNQH196.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07YW4RBQP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08B659G81.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0D97YBP2X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0BK93C994.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DLWK7YQH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B012KVI4YU.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202501.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FR8CNDJV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B09HZTKLNP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B07LGMG4B6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202404.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202411.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BHL8TS7F.xlsx
+  - .agents/skills/spectra-debug/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GG9L5Y7J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0CQKZ3N5G.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FQW4KWRD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B074N6RHP6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07VYJ6SKS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0115I2DRI.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0D7W3G6G9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202307.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0CNYJVWMB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FK2LLB86.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0D5QZGZ39.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0C72RBR38.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0G1Z1QKJ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202407.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0DJ3JR93D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B005BLYF0O.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B001MBV4U6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B079MN2G6N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F99F11BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B015SGHFO4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B08P4HHSZT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FRDKKFR3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B001K85BNC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09Z258LKR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0DXN7Y9YP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202509.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0G4CXGMNW.xlsx
+  - .agents/skills/new-company/checklist.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GG9L5Y7J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BKQ9F14X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B001MBV4V0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202412.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0D6KLHHW3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0F483XM9C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DRBDGJCB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BVVKKXFZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FC5DV7BH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B084VK7VC2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0CXJ2GP6C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FJS3TF3V.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202411.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DCVSRNN1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FS5TCR3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C8SBYXPQ.xlsx
+  - .claude
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B017GRRSB8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FK2LLB86.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202511.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202402.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FX4NX6HM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0DXTPHL8F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0D2DRS9KY.xlsx
+  - kitchenMAMA
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BVQDYVTS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BQ1GZY7H.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07QZGP562.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0F32PSK95.xlsx
+  - .playwright-mcp/console-2026-03-06T00-49-19-181Z.log
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BQ1GZY7H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B09XVP6YPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FK9ZN46W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07XTLC91J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B089W594LC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BSTWJL9L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09V5PDTSD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07ZQVT7GJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BPXVV4T7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B075N83693.xlsx
+  - .agents/skills/spectra-propose/SKILL.md
+  - l4_enterprise.code-workspace
+  - URBANER/rawdata_Urbaner/amazon_demographic/US_Demographics_Simple_Month_2024_01_31.csv
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B01B5JCT4E.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FNN541XB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0F2RSTDSJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B08LGGMP5W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BY1KRJZ1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202511.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08WTG6RCJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BX2RBN4X.xlsx
+  - D_RACING
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0CF54LS3T.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0B12WD6MV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B00FU6PDLU.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B00BB5YHEI.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0DKJVC5B2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09HVDD8ST.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FL77VTPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CVJ257SG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0FRYTH9W4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0DKJVC5B2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202409.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0B7R5TJLD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B005BLYF0O.xlsx
+  - .agents/skills/new-company/templates/Rproj_template
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C6LD957K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GL2DKVQH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DM3PQR51.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FJS3TF3V.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202404.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FNRSHSTX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B00JWP8F3I.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0BK93C994-.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FB212HTG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0GCZSPCDW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0BJ185758.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0B5WRKYBZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B08P9HNNCX.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0F68QG91J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B09QFRN3D5.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B5Q6FJYW.xlsx
+  - .spectra.yaml
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DFH3YPTJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GD67VCG6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FJXTP8TS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202312.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DFM6F221.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CYQVK16.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B098NSHBQK.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY4GJKJ7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CGVDNG3L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0F631Z3XH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B008KEJ1LM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FLB5X6SQ.xlsx
+  - AGENTS.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CDNQ62ML.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B09R1LXS54.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DM3PQR51.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0DSKZWWD4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0756J4R14.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BY18J8D9.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0F2RSTDSJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0F2M2NSBX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0D6KLHHW3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0GBWZBMS5.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B07W85ZPL1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B003TW70E0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B00FU6PDLU.xlsx
+  - shared/update_scripts
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0823PD6XD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0F5917D36.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0G13F42QT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FP2ZGR4C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0F2MWC94H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202509.txt
+  - .agents/skills/spectra-ask/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GDCRLXVR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B09Y52BL5D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07SZG537S.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0F62R84FS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FBVDJS29.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FP2Y66VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DLWK7YQH.xlsx
+  - shared/nsql
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07YW4RBQP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FJS3QR1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0DSGPWQH7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B083QHKD16.xlsx
+  - URBANER/rawdata_Urbaner/資料夾命名規範說明書.docx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C5F6X3VT.xlsx
+  - .agents/skills/issue/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CLGYXNMM.xlsx
+  - .agents/skills/new-company/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FKFXCT5X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07XTLC91J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GFF1QTC2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0FRYTH9W4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B084VK7VC2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0CNYJVWMB.xlsx
+  - .agents/skills/transcript-correction/references/terminology.md
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FVFD1775.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0742G961R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0F2M2NSBX.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0G4SH3ZL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0G2H1FZ73.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0CY1G176K.xlsx
+  - URBANER/rawdata_Urbaner/SKUtoeBay numbers/SKUtoASIN number.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0BRNJ14YJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202406.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FNRSHSTX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0C5RXT52J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0D2DRS9KY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0BGJHMJHW.xlsx
+  - .agents/skills/spectra-commit/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09QLVGVJJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B09Y52BL5D.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B092QN563N.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0C5D4QVLJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07NPBQSKY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B09R1LXS54.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FS1TX2XL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B6F1G63Z.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DP2T4NSK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202310.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202304.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CT5CDBL2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0GHS5T1Y3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FHXTJ8JN.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0GBWZBMS5.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0F32PSK95.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08NWTM5HQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0F5917D36.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0C5RXT52J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CM24DF1R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BBLJFS55.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FBVDJS29.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F5VJD5DQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DWK397VF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202503.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWXDSJ9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202507.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B093HJJV9L.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0BZ3R6MZ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202407.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B09XVP6YPM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTKLDYX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202506.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202301.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FRDKKFR3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0CX8SWZ57.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FCG1FFVL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202412.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B075N83693.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0CX8SWZ57.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CVJ257SG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B08P51WYLS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DMSRY4N3.xlsx
+  - .agents/skills/setup-etl-source/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DLBB3VRB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B09MKF3RPW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0D5HLHFNB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F99F11BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FK9ZN46W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B09Q5BQ9FM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B086W2L7LZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B01M0QJ2MO.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0G13F42QT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C8SBYXPQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0B96LD4X4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07B7QB3WD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY3PWWTQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09QLVGVJJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07CY1YVL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09R9YJL27.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FKG6WN38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DLBB3VRB.xlsx
+  - .agents/skills/spectra-archive/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B09XLGLX5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B074N6RHP6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B07W85ZPL1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FL267TCG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0D958SN5L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B086W2L7LZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FX4NX6HM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BHL8TS7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07FFGYWJ6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07ZQV252K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0D97YBP2X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B01K73KIMO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202306.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B06XNQH196.xlsx
+  - .playwright-mcp/console-2026-03-06T00-49-10-858Z.log
+  - .agents/skills/codex-review/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0C5D4QVLJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202309.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FGLF3SDT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FB212HTG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B08LGGMP5W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0G4CXGMNW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BX2RBN4X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FHHXHMM8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0DSGPWQH7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0C72S38F3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B09FS5ZVXK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CLWL76HK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0G1Z7TYB7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FN3Q33TB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0D958SN5L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B4WPWDVW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B08P4HHSZT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BPXVV4T7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0BZ3R6MZ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0C2Y71YXV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0G4R26XSY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0CGHWFF71.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BTJWSGXV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0756J4R14.xlsx
+  - URBANER/rawdata_Urbaner/KEYS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CLGYXNMM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B09Q5BQ9FM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FRMTD2YB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CQB9Y9LR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DT1227QM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B001K85BN2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2026/202602.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202507.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B003TW70E0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0GD73TXJC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0BQQJKYDL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202501.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DR89DWPY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09WHTH3ZX.xlsx
+  - .agents/skills/new-company/templates/gitignore_template
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DCMNN9RP.xlsx
+  - .agents/skills/new-company/templates/app_R_template
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CT5CDBL2.xlsx
+  - .agents/skills/spectra-ingest/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DWX1J8D6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0BRNJ14YJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B08P9HNNCX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CZ3KDN9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GLJRLS5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202510.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FNDLD746.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0823RGKHS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B016JNKVHI.xlsx
+  - .agents/skills/suggestion-report/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0G1Z7TYB7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0C3LBYPMZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FCYBJK6T.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B086DRDHKC.xlsx
+  - .agents/skills/new-company/templates/Rprofile_template
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202405.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BKQ9F14X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09WHTH3ZX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B01HRSZRXM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DT1227QM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B098BFT3CF.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09V5PDTSD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F66FZHY3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B086RHFJJV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FJXTP8TS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FC5DV7BH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GL2GP74J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B015SGHFO4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0GLJRLS5G.xlsx
+  - .agents/skills/new-company/templates/env_template
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DFH3YPTJ.xlsx
+  - .agents/skills/new-company/templates/README_template.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FVG4YZP3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202504.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B092H8XHDG.xlsx
+  - shared/global_scripts
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B4WPWDVW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B5Q6FJYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B6F1G63Z.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202405.txt
+  - URBANER/rawdata_Urbaner/產品KEYS命名規範說明書.docx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B01B5JCT4E.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0G4R26XSY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08B659G81.xlsx
+  - .agents/skills/spectra-audit/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY4LX65R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FRNDSY52.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B4NN7GL7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DCVSRNN1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FNDLD746.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BL2YWH3N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0DSKZWWD4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0D46JYD7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0BJ185758.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202508.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B6B6K4YD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CTQ1WG87.xlsx
+  - MAMBA
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0CTQ68LH8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0BGJHMJHW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B01HRSZRXM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C6LD957K.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0F631Z3XH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BNKRNS85.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B004EBU3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FJS3QR1W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY4GJKJ7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B07YFFLDQB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0C72S38F3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F5VJD5DQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202408.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07Q34D62F.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B01N5CAOZA.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GD67VCG6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BY1KRJZ1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FHXTJ8JN.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0BHYZV3HY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FYGVHX32.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B00BB5YHEI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FRNDSY52.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B004EBU3BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07CY1YVL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DDBY1X2M.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B09HZTKLNP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0F4R3QMKX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07GGGJHZW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B096VP4L1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B09MKF3RPW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWWPLCP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202403.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07Q34D62F.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B07LGMG4B6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTCGQSC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FVFD1775.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0CQKZ3N5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0742G961R.xlsx
+  - .agents/skills/transcript-correction/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DCMHTXJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0F483XM9C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08NWTM5HQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FLB5X6SQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0DMNLL13F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07NPBQSKY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0D5HLHFNB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B01M0QJ2MO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWWPLCP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09R9YJL27.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BBLJFS55.xlsx
+  - URBANER/rawdata_Urbaner/amazon_demographic/US_Demographics_Simple_Month_2024_02_29.csv
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWY9BV9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07QZGP562.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FXMGVCYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B079MN2G6N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FL267TCG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B098NSHBQK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B008KEJ1LM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B001MBV4U6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0C3LBYPMZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B092H8XHDG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BTJWSGXV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FS1TX2XL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BNKRNS85.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0F997FHHR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0C2Y71YXV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B086RHFJJV.xlsx
+  - .agents/skills/transcript-action-items/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DWK397VF.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0B7R5TJLD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWXDSJ9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202401.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B017GRRSB8.xlsx
+  - .agents/skills/add-principle/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0BHYZV3HY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DP2T4NSK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07ZQVT7GJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CYQ4HF4P.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CTQ1WG87.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07VYJ6SKS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09F98J1GS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B093HJJV9L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DMSRY4N3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B01N5CAOZA.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B07SSRDCHT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0D5QZGZ39.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTY4PWF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202403.txt
+  - .agents/skills/new-company/templates/app_config_template.yaml
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0G492LXS9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BXT859DN.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DJW8J1L6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2026/202601.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202602.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CLWL76HK.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F66FZHY3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07GGGJHZW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202508.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0G5JTRNH6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B001K85BNC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0DSB44YJZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FQWLR3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DFM6F221.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0G4SH3ZL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09HVDD8ST.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B098P6164W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0F62R84FS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B086W36F2W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTKLDYX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07SZG537S.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FXMGVCYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CGVDNG3L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202510.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FQW4KWRD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0B96LD4X4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BSTWJL9L.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTY4PWF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0G325KH21.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0DMNLL13F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0B5WRKYBZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0F2MWC94H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CJ2Z5XWY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DDBY1X2M.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07SRCS8YZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B012KVI4YU.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B098P6164W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C5F6X3VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202512.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0F997FHHR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0CJZ96983.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0GCZSPCDW.xlsx
+-->
+
+---
+### Requirement: ETL Phase Naming Convention SHALL Document Both 0IM Forms
+
+The `{platform}_ETL_{datatype}_{phase}.R` naming convention SHALL be documented as accommodating both legacy (R script) and post-glue (bridge yaml) forms for the 0IM phase:
+
+| Phase | Legacy file pattern | Post-glue file pattern |
+| --- | --- | --- |
+| 0IM | `update_scripts/ETL/<platform>/<platform>_ETL_<datatype>_0IM.R` | `bridges/<COMPANY>/<platform>/<datatype>.bridge.yaml` |
+| 1ST | `update_scripts/ETL/<platform>/<platform>_ETL_<datatype>_1ST.R` | (unchanged) |
+| 2TR | `update_scripts/ETL/<platform>/<platform>_ETL_<datatype>_2TR.R` | (unchanged) |
+
+DRV phases (3PR / 4CL / 5NM) follow the separate `<platform>_D<group>_<seq>.R` naming convention and are unaffected by this requirement.
+
+#### Scenario: New onboarding engineer reads naming convention documentation
+
+- **WHEN** a new engineer reads DM_R028 (ETL Data Type Separation Naming) to understand the file pattern
+- **THEN** the documentation SHALL show both legacy and post-glue forms in a parallel table
+- **AND** the documentation SHALL note that during migration window, both forms may exist for different datatypes within the same platform
+
+
+<!-- @trace
+source: etl-vocabulary-realignment-glue-era
+updated: 2026-05-11
+code:
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B092QN563N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FS5TCR3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0DXN7Y9YP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202502.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0DXTPHL8F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0D7W3G6G9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202504.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FCBWYHS6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07B7S9X3N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07HXK5J58.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BXT859DN.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0CJZ96983.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0115I2DRI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0CGHWFF71.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FHKR48NR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B08P51WYLS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B098BFT3CF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202512.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0F4R3QMKX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FD3LMQ3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B09QFRN3D5.xlsx
+  - .agents/skills/spectra-apply/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07HXK5J58.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CYQ4HF4P.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B09YH1L75X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FGLF3SDT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B086DRDHKC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DCMHTXJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0CYBRY5XP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07S2B6N31.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202505.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B083QHKD16.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0CF54LS3T.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202506.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202410.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202601.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BVQDYVTS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BY18J8D9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0CYBRY5XP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07B7QB3WD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY3PWWTQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0G325KH21.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWY9BV9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0FVKQWNNJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09Z258LKR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DRBDGJCB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FNN541XB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DR89DWPY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202505.txt
+  - QEF_DESIGN
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CDNQ62ML.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B087LZDD59.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202308.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CYZH2XC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07XLLBB5J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B087LZDD59.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0CY1G176K.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0DNPDG19C.xlsx
+  - psychquant-claude-plugins-src/
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CJ2Z5XWY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DJW8J1L6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0BQQJKYDL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07SRCS8YZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GDCRLXVR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B016JNKVHI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202408.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FCBWYHS6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202311.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0D46JYD7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09F98J1GS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0CXJ2GP6C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FHKR48NR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0G2YSNSPW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FRMTD2YB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B09XLGLX5G.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FCG1FFVL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0B243H6QX.xlsx
+  - .agents/skills/new-company/templates/CLAUDE_template.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07YFFLDQB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0F68QG91J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0C72RBR38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0G5JTRNH6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202503.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FKG6WN38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY4LX65R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DWX1J8D6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DCMNN9RP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0G2H1FZ73.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FYGVHX32.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FHHXHMM8.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B4NN7GL7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0B12WD6MV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07B7S9X3N.xlsx
+  - WISER
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202302.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202303.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0F7XG72DT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202406.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202502.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GFF1QTC2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B6B6K4YD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202410.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B00JWP8F3I.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FP2Y66VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FCYBJK6T.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FQ3G4HYB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B089W594LC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTCGQSC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0G1Z1QKJ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0DJ3JR93D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08WTG6RCJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FP2ZGR4C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0GD73TXJC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07XLLBB5J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0823RGKHS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BC1P11Q3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FQ3G4HYB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0F7XG72DT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FL77VTPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BC1P11Q3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B07SSRDCHT.xlsx
+  - .agents/skills/pipeline-health/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07NW44F6Q.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FR8CNDJV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202409.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B09YH1L75X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FN3Q33TB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B001MBV4V0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B001K85BN2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07NW44F6Q.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0CTQ68LH8.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0FVKQWNNJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FD3LMQ3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FQWLR3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B09FS5ZVXK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0G2YSNSPW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0DNPDG19C.xlsx
+  - .agents/skills/spectra-discuss/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GHS5T1Y3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B096VP4L1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FKFXCT5X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07FFGYWJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FVG4YZP3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0B243H6QX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B086W36F2W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07ZQV252K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CM24DF1R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B01K73KIMO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202305.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CQB9Y9LR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B06XNQH196.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07YW4RBQP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08B659G81.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0D97YBP2X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0BK93C994.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DLWK7YQH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B012KVI4YU.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202501.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FR8CNDJV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B09HZTKLNP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B07LGMG4B6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202404.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202411.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BHL8TS7F.xlsx
+  - .agents/skills/spectra-debug/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GG9L5Y7J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0CQKZ3N5G.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FQW4KWRD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B074N6RHP6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07VYJ6SKS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0115I2DRI.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0D7W3G6G9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202307.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0CNYJVWMB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FK2LLB86.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0D5QZGZ39.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0C72RBR38.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0G1Z1QKJ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202407.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0DJ3JR93D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B005BLYF0O.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B001MBV4U6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B079MN2G6N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F99F11BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B015SGHFO4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B08P4HHSZT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FRDKKFR3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B001K85BNC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09Z258LKR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0DXN7Y9YP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202509.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0G4CXGMNW.xlsx
+  - .agents/skills/new-company/checklist.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GG9L5Y7J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BKQ9F14X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B001MBV4V0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202412.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0D6KLHHW3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0F483XM9C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DRBDGJCB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BVVKKXFZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FC5DV7BH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B084VK7VC2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0CXJ2GP6C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FJS3TF3V.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202411.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DCVSRNN1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FS5TCR3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C8SBYXPQ.xlsx
+  - .claude
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B017GRRSB8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FK2LLB86.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202511.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202402.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FX4NX6HM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0DXTPHL8F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0D2DRS9KY.xlsx
+  - kitchenMAMA
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BVQDYVTS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BQ1GZY7H.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07QZGP562.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0F32PSK95.xlsx
+  - .playwright-mcp/console-2026-03-06T00-49-19-181Z.log
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BQ1GZY7H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B09XVP6YPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FK9ZN46W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07XTLC91J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B089W594LC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BSTWJL9L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09V5PDTSD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07ZQVT7GJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BPXVV4T7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B075N83693.xlsx
+  - .agents/skills/spectra-propose/SKILL.md
+  - l4_enterprise.code-workspace
+  - URBANER/rawdata_Urbaner/amazon_demographic/US_Demographics_Simple_Month_2024_01_31.csv
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B01B5JCT4E.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FNN541XB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0F2RSTDSJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B08LGGMP5W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BY1KRJZ1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202511.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08WTG6RCJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BX2RBN4X.xlsx
+  - D_RACING
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0CF54LS3T.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0B12WD6MV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B00FU6PDLU.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B00BB5YHEI.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0DKJVC5B2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09HVDD8ST.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FL77VTPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CVJ257SG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0FRYTH9W4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0DKJVC5B2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202409.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0B7R5TJLD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B005BLYF0O.xlsx
+  - .agents/skills/new-company/templates/Rproj_template
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C6LD957K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GL2DKVQH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DM3PQR51.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FJS3TF3V.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202404.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FNRSHSTX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B00JWP8F3I.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0BK93C994-.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FB212HTG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0GCZSPCDW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0BJ185758.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0B5WRKYBZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B08P9HNNCX.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0F68QG91J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B09QFRN3D5.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B5Q6FJYW.xlsx
+  - .spectra.yaml
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DFH3YPTJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GD67VCG6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FJXTP8TS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202312.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DFM6F221.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CYQVK16.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B098NSHBQK.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY4GJKJ7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CGVDNG3L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0F631Z3XH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B008KEJ1LM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FLB5X6SQ.xlsx
+  - AGENTS.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CDNQ62ML.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B09R1LXS54.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DM3PQR51.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0DSKZWWD4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0756J4R14.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BY18J8D9.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0F2RSTDSJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0F2M2NSBX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0D6KLHHW3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0GBWZBMS5.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B07W85ZPL1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B003TW70E0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B00FU6PDLU.xlsx
+  - shared/update_scripts
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0823PD6XD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0F5917D36.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0G13F42QT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FP2ZGR4C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0F2MWC94H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202509.txt
+  - .agents/skills/spectra-ask/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GDCRLXVR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B09Y52BL5D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07SZG537S.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0F62R84FS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FBVDJS29.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FP2Y66VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DLWK7YQH.xlsx
+  - shared/nsql
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07YW4RBQP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FJS3QR1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0DSGPWQH7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B083QHKD16.xlsx
+  - URBANER/rawdata_Urbaner/資料夾命名規範說明書.docx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C5F6X3VT.xlsx
+  - .agents/skills/issue/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CLGYXNMM.xlsx
+  - .agents/skills/new-company/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FKFXCT5X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07XTLC91J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GFF1QTC2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0FRYTH9W4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B084VK7VC2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0CNYJVWMB.xlsx
+  - .agents/skills/transcript-correction/references/terminology.md
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FVFD1775.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0742G961R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0F2M2NSBX.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0G4SH3ZL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0G2H1FZ73.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0CY1G176K.xlsx
+  - URBANER/rawdata_Urbaner/SKUtoeBay numbers/SKUtoASIN number.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0BRNJ14YJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202406.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FNRSHSTX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0C5RXT52J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0D2DRS9KY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0BGJHMJHW.xlsx
+  - .agents/skills/spectra-commit/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09QLVGVJJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B09Y52BL5D.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B092QN563N.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0C5D4QVLJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07NPBQSKY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B09R1LXS54.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FS1TX2XL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B6F1G63Z.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DP2T4NSK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202310.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202304.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CT5CDBL2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0GHS5T1Y3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FHXTJ8JN.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0GBWZBMS5.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0F32PSK95.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08NWTM5HQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0F5917D36.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0C5RXT52J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CM24DF1R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BBLJFS55.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FBVDJS29.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F5VJD5DQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DWK397VF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202503.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWXDSJ9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202507.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B093HJJV9L.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0BZ3R6MZ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202407.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B09XVP6YPM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTKLDYX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202506.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202301.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FRDKKFR3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0CX8SWZ57.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FCG1FFVL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202412.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B075N83693.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0CX8SWZ57.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CVJ257SG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B08P51WYLS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DMSRY4N3.xlsx
+  - .agents/skills/setup-etl-source/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DLBB3VRB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B09MKF3RPW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0D5HLHFNB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F99F11BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FK9ZN46W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B09Q5BQ9FM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B086W2L7LZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B01M0QJ2MO.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0G13F42QT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C8SBYXPQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0B96LD4X4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07B7QB3WD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY3PWWTQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09QLVGVJJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07CY1YVL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09R9YJL27.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FKG6WN38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DLBB3VRB.xlsx
+  - .agents/skills/spectra-archive/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B09XLGLX5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B074N6RHP6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B07W85ZPL1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FL267TCG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0D958SN5L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B086W2L7LZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FX4NX6HM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BHL8TS7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07FFGYWJ6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07ZQV252K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0D97YBP2X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B01K73KIMO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202306.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B06XNQH196.xlsx
+  - .playwright-mcp/console-2026-03-06T00-49-10-858Z.log
+  - .agents/skills/codex-review/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0C5D4QVLJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202309.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FGLF3SDT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FB212HTG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B08LGGMP5W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0G4CXGMNW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BX2RBN4X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FHHXHMM8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0DSGPWQH7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0C72S38F3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B09FS5ZVXK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CLWL76HK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0G1Z7TYB7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FN3Q33TB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0D958SN5L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B4WPWDVW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B08P4HHSZT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BPXVV4T7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0BZ3R6MZ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0C2Y71YXV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0G4R26XSY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0CGHWFF71.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BTJWSGXV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0756J4R14.xlsx
+  - URBANER/rawdata_Urbaner/KEYS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CLGYXNMM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B09Q5BQ9FM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FRMTD2YB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CQB9Y9LR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DT1227QM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B001K85BN2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2026/202602.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202507.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B003TW70E0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0GD73TXJC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0BQQJKYDL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202501.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DR89DWPY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09WHTH3ZX.xlsx
+  - .agents/skills/new-company/templates/gitignore_template
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DCMNN9RP.xlsx
+  - .agents/skills/new-company/templates/app_R_template
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CT5CDBL2.xlsx
+  - .agents/skills/spectra-ingest/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DWX1J8D6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0BRNJ14YJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B08P9HNNCX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CZ3KDN9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GLJRLS5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202510.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FNDLD746.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0823RGKHS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B016JNKVHI.xlsx
+  - .agents/skills/suggestion-report/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0G1Z7TYB7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0C3LBYPMZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FCYBJK6T.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B086DRDHKC.xlsx
+  - .agents/skills/new-company/templates/Rprofile_template
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202405.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BKQ9F14X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09WHTH3ZX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B01HRSZRXM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DT1227QM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B098BFT3CF.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09V5PDTSD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F66FZHY3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B086RHFJJV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FJXTP8TS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FC5DV7BH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GL2GP74J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B015SGHFO4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0GLJRLS5G.xlsx
+  - .agents/skills/new-company/templates/env_template
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DFH3YPTJ.xlsx
+  - .agents/skills/new-company/templates/README_template.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FVG4YZP3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202504.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B092H8XHDG.xlsx
+  - shared/global_scripts
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B4WPWDVW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B5Q6FJYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B6F1G63Z.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202405.txt
+  - URBANER/rawdata_Urbaner/產品KEYS命名規範說明書.docx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B01B5JCT4E.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0G4R26XSY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08B659G81.xlsx
+  - .agents/skills/spectra-audit/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY4LX65R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FRNDSY52.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B4NN7GL7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DCVSRNN1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FNDLD746.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BL2YWH3N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0DSKZWWD4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0D46JYD7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0BJ185758.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202508.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B6B6K4YD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CTQ1WG87.xlsx
+  - MAMBA
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0CTQ68LH8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0BGJHMJHW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B01HRSZRXM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C6LD957K.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0F631Z3XH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BNKRNS85.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B004EBU3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FJS3QR1W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY4GJKJ7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B07YFFLDQB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0C72S38F3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F5VJD5DQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202408.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07Q34D62F.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B01N5CAOZA.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GD67VCG6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BY1KRJZ1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FHXTJ8JN.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0BHYZV3HY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FYGVHX32.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B00BB5YHEI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FRNDSY52.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B004EBU3BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07CY1YVL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DDBY1X2M.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B09HZTKLNP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0F4R3QMKX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07GGGJHZW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B096VP4L1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B09MKF3RPW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWWPLCP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202403.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07Q34D62F.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B07LGMG4B6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTCGQSC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FVFD1775.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0CQKZ3N5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0742G961R.xlsx
+  - .agents/skills/transcript-correction/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DCMHTXJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0F483XM9C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08NWTM5HQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FLB5X6SQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0DMNLL13F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07NPBQSKY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0D5HLHFNB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B01M0QJ2MO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWWPLCP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09R9YJL27.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BBLJFS55.xlsx
+  - URBANER/rawdata_Urbaner/amazon_demographic/US_Demographics_Simple_Month_2024_02_29.csv
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWY9BV9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07QZGP562.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FXMGVCYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B079MN2G6N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FL267TCG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B098NSHBQK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B008KEJ1LM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B001MBV4U6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0C3LBYPMZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B092H8XHDG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BTJWSGXV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FS1TX2XL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BNKRNS85.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0F997FHHR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0C2Y71YXV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B086RHFJJV.xlsx
+  - .agents/skills/transcript-action-items/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DWK397VF.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0B7R5TJLD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWXDSJ9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202401.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B017GRRSB8.xlsx
+  - .agents/skills/add-principle/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0BHYZV3HY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DP2T4NSK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07ZQVT7GJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CYQ4HF4P.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CTQ1WG87.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07VYJ6SKS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09F98J1GS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B093HJJV9L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DMSRY4N3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B01N5CAOZA.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B07SSRDCHT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0D5QZGZ39.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTY4PWF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202403.txt
+  - .agents/skills/new-company/templates/app_config_template.yaml
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0G492LXS9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BXT859DN.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DJW8J1L6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2026/202601.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202602.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CLWL76HK.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F66FZHY3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07GGGJHZW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202508.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0G5JTRNH6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B001K85BNC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0DSB44YJZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FQWLR3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DFM6F221.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0G4SH3ZL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09HVDD8ST.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B098P6164W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0F62R84FS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B086W36F2W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTKLDYX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07SZG537S.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FXMGVCYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CGVDNG3L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202510.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FQW4KWRD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0B96LD4X4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BSTWJL9L.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTY4PWF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0G325KH21.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0DMNLL13F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0B5WRKYBZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0F2MWC94H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CJ2Z5XWY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DDBY1X2M.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07SRCS8YZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B012KVI4YU.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B098P6164W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C5F6X3VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202512.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0F997FHHR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0CJZ96983.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0GCZSPCDW.xlsx
+-->
+
+---
+### Requirement: MP Vocabulary Cross-References SHALL Be Updated Atomically Across Three Layers
+
+When any MP qmd file is amended for glue-era vocabulary realignment, the amendment SHALL be propagated to all three documentation layers in a single atomic unit:
+
+- **Layer 1**: `00_principles/docs/en/part1_principles/.../<MP-id>_<name>.qmd` and corresponding zh translation at `00_principles/docs/zh/part1_principles/.../<MP-id>_<name>.qmd`
+- **Layer 2**: AI-optimized index entry in `00_principles/llm/CH<NN>_<chapter>.yaml` (typically `CH02_data.yaml` for ETL-axis MPs)
+- **Layer 3**: Quick-reference text in the corresponding `.claude/rules/<NN>-<topic>.md` file (typically `02-coding.md` for ETL-axis MPs)
+
+Partial sync (e.g., Layer 1 amended but Layer 2 stale) SHALL be considered a violation. Apply work SHALL complete all three layers per amended file before moving to the next file.
+
+#### Scenario: Partial DOC_R009 sync detected mid-apply
+
+- **WHEN** an apply session is interrupted after Layer 1 .qmd is amended but before Layer 2 yaml is updated
+- **THEN** the next apply session SHALL complete the Layer 2 update before considering that file done
+- **AND** SHALL NOT mark the per-file task complete until all three layers are sync
+
+#### Scenario: Future #625 mechanical validator flags drift
+
+- **WHEN** the future `validate_principle_layers.R` script (per #625) detects three-layer drift on an MP that this change has amended
+- **THEN** the validator SHALL emit a CRITICAL warning identifying which layer is out of sync
+- **AND** the operator SHALL trace the drift to either incomplete amendment or post-amendment regression
+
+##### Example: Three-layer sync verification per amended MP
+
+- **GIVEN** MP064 was amended for glue-era vocabulary
+- **WHEN** the apply phase finishes the per-MP task for MP064
+- **THEN** all three of the following SHALL contain the new "post-glue raw layer is canonical" framing:
+  - `00_principles/docs/en/part1_principles/CH00_fundamental_principles/04_data_management/MP064_etl_derivation_separation.qmd`
+  - The MP064 entry in `00_principles/llm/CH02_data.yaml`
+  - The MP064 quick-ref section in `shared/global_scripts/00_principles/.claude/rules/02-coding.md`
+- **AND** the MP064 frontmatter `version` field SHALL be incremented (e.g., from unspecified to v2.1)
+- **AND** the MP064 frontmatter `date_modified` SHALL reflect the apply date
+
+<!-- @trace
+source: etl-vocabulary-realignment-glue-era
+updated: 2026-05-11
+code:
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B092QN563N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FS5TCR3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0DXN7Y9YP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202502.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0DXTPHL8F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0D7W3G6G9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202504.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FCBWYHS6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07B7S9X3N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07HXK5J58.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BXT859DN.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0CJZ96983.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0115I2DRI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0CGHWFF71.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FHKR48NR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B08P51WYLS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B098BFT3CF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202512.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0F4R3QMKX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FD3LMQ3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B09QFRN3D5.xlsx
+  - .agents/skills/spectra-apply/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07HXK5J58.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CYQ4HF4P.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B09YH1L75X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FGLF3SDT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B086DRDHKC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DCMHTXJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0CYBRY5XP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07S2B6N31.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202505.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B083QHKD16.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0CF54LS3T.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202506.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202410.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202601.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BVQDYVTS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BY18J8D9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0CYBRY5XP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07B7QB3WD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY3PWWTQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0G325KH21.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWY9BV9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0FVKQWNNJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09Z258LKR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DRBDGJCB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FNN541XB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DR89DWPY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202505.txt
+  - QEF_DESIGN
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CDNQ62ML.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B087LZDD59.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202308.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CYZH2XC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07XLLBB5J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B087LZDD59.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0CY1G176K.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0DNPDG19C.xlsx
+  - psychquant-claude-plugins-src/
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CJ2Z5XWY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DJW8J1L6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0BQQJKYDL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07SRCS8YZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GDCRLXVR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B016JNKVHI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202408.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FCBWYHS6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202311.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0D46JYD7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09F98J1GS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0CXJ2GP6C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FHKR48NR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0G2YSNSPW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FRMTD2YB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B09XLGLX5G.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FCG1FFVL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0B243H6QX.xlsx
+  - .agents/skills/new-company/templates/CLAUDE_template.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07YFFLDQB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0F68QG91J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0C72RBR38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0G5JTRNH6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202503.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FKG6WN38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY4LX65R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DWX1J8D6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DCMNN9RP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0G2H1FZ73.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FYGVHX32.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FHHXHMM8.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B4NN7GL7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0B12WD6MV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07B7S9X3N.xlsx
+  - WISER
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202302.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202303.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0F7XG72DT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202406.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202502.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GFF1QTC2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B6B6K4YD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202410.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B00JWP8F3I.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FP2Y66VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FCYBJK6T.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FQ3G4HYB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B089W594LC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTCGQSC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0G1Z1QKJ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0DJ3JR93D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08WTG6RCJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FP2ZGR4C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0GD73TXJC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07XLLBB5J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0823RGKHS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BC1P11Q3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FQ3G4HYB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0F7XG72DT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FL77VTPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BC1P11Q3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B07SSRDCHT.xlsx
+  - .agents/skills/pipeline-health/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07NW44F6Q.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FR8CNDJV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202409.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B09YH1L75X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FN3Q33TB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B001MBV4V0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B001K85BN2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07NW44F6Q.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0CTQ68LH8.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0FVKQWNNJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FD3LMQ3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FQWLR3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B09FS5ZVXK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0G2YSNSPW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0DNPDG19C.xlsx
+  - .agents/skills/spectra-discuss/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GHS5T1Y3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B096VP4L1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FKFXCT5X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07FFGYWJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FVG4YZP3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0B243H6QX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B086W36F2W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07ZQV252K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CM24DF1R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B01K73KIMO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202305.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CQB9Y9LR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B06XNQH196.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07YW4RBQP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08B659G81.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0D97YBP2X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0BK93C994.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DLWK7YQH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B012KVI4YU.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202501.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FR8CNDJV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B09HZTKLNP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B07LGMG4B6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202404.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202411.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BHL8TS7F.xlsx
+  - .agents/skills/spectra-debug/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GG9L5Y7J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0CQKZ3N5G.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FQW4KWRD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B074N6RHP6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07VYJ6SKS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0115I2DRI.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0D7W3G6G9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202307.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0CNYJVWMB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FK2LLB86.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0D5QZGZ39.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0C72RBR38.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0G1Z1QKJ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202407.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0DJ3JR93D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B005BLYF0O.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B001MBV4U6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B079MN2G6N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F99F11BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B015SGHFO4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B08P4HHSZT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FRDKKFR3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B001K85BNC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09Z258LKR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0DXN7Y9YP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202509.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0G4CXGMNW.xlsx
+  - .agents/skills/new-company/checklist.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GG9L5Y7J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BKQ9F14X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B001MBV4V0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202412.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0D6KLHHW3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0F483XM9C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DRBDGJCB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BVVKKXFZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FC5DV7BH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B084VK7VC2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0CXJ2GP6C.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FJS3TF3V.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202411.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DCVSRNN1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FS5TCR3B.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C8SBYXPQ.xlsx
+  - .claude
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B017GRRSB8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FK2LLB86.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202511.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202402.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FX4NX6HM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0DXTPHL8F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0D2DRS9KY.xlsx
+  - kitchenMAMA
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BVQDYVTS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BQ1GZY7H.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07QZGP562.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0F32PSK95.xlsx
+  - .playwright-mcp/console-2026-03-06T00-49-19-181Z.log
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BQ1GZY7H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B09XVP6YPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FK9ZN46W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B07XTLC91J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B089W594LC.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BSTWJL9L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09V5PDTSD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07ZQVT7GJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BPXVV4T7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B075N83693.xlsx
+  - .agents/skills/spectra-propose/SKILL.md
+  - l4_enterprise.code-workspace
+  - URBANER/rawdata_Urbaner/amazon_demographic/US_Demographics_Simple_Month_2024_01_31.csv
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B01B5JCT4E.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FNN541XB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0F2RSTDSJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B08LGGMP5W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BY1KRJZ1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202511.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08WTG6RCJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BX2RBN4X.xlsx
+  - D_RACING
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0CF54LS3T.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0B12WD6MV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B00FU6PDLU.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B00BB5YHEI.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0DKJVC5B2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09HVDD8ST.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FL77VTPM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CVJ257SG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0FRYTH9W4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0DKJVC5B2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202409.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0B7R5TJLD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B005BLYF0O.xlsx
+  - .agents/skills/new-company/templates/Rproj_template
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C6LD957K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GL2DKVQH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DM3PQR51.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FJS3TF3V.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202404.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FNRSHSTX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B00JWP8F3I.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0BK93C994-.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FB212HTG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0GCZSPCDW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0BJ185758.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0B5WRKYBZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B08P9HNNCX.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0F68QG91J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B09QFRN3D5.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B5Q6FJYW.xlsx
+  - .spectra.yaml
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DFH3YPTJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0GD67VCG6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FJXTP8TS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202312.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DFM6F221.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CYQVK16.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B098NSHBQK.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY4GJKJ7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CGVDNG3L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0F631Z3XH.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B008KEJ1LM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FLB5X6SQ.xlsx
+  - AGENTS.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CDNQ62ML.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B09R1LXS54.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DM3PQR51.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0DSKZWWD4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0756J4R14.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0BY18J8D9.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0F2RSTDSJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0F2M2NSBX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0D6KLHHW3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0GBWZBMS5.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B07W85ZPL1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B003TW70E0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B00FU6PDLU.xlsx
+  - shared/update_scripts
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0823PD6XD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0F5917D36.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0G13F42QT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FP2ZGR4C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0F2MWC94H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202509.txt
+  - .agents/skills/spectra-ask/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GDCRLXVR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B09Y52BL5D.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B07SZG537S.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0F62R84FS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FBVDJS29.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FP2Y66VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DLWK7YQH.xlsx
+  - shared/nsql
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07YW4RBQP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FJS3QR1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0DSGPWQH7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B083QHKD16.xlsx
+  - URBANER/rawdata_Urbaner/資料夾命名規範說明書.docx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C5F6X3VT.xlsx
+  - .agents/skills/issue/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CLGYXNMM.xlsx
+  - .agents/skills/new-company/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FKFXCT5X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07XTLC91J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GFF1QTC2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0FRYTH9W4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B084VK7VC2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0CNYJVWMB.xlsx
+  - .agents/skills/transcript-correction/references/terminology.md
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FVFD1775.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0742G961R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0F2M2NSBX.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0G4SH3ZL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0G2H1FZ73.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0CY1G176K.xlsx
+  - URBANER/rawdata_Urbaner/SKUtoeBay numbers/SKUtoASIN number.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0BRNJ14YJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202406.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FNRSHSTX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0C5RXT52J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0D2DRS9KY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0BGJHMJHW.xlsx
+  - .agents/skills/spectra-commit/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09QLVGVJJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B09Y52BL5D.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B092QN563N.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0C5D4QVLJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B07NPBQSKY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B09R1LXS54.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FS1TX2XL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B6F1G63Z.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DP2T4NSK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202310.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202304.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CT5CDBL2.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0GHS5T1Y3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FHXTJ8JN.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0GBWZBMS5.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0F32PSK95.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B08NWTM5HQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0F5917D36.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0C5RXT52J.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CM24DF1R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BBLJFS55.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FBVDJS29.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F5VJD5DQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0DWK397VF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202503.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWXDSJ9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202507.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B093HJJV9L.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0BZ3R6MZ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202407.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B09XVP6YPM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTKLDYX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202506.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202301.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FRDKKFR3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0CX8SWZ57.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FCG1FFVL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202412.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B075N83693.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0CX8SWZ57.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0CVJ257SG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B08P51WYLS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DMSRY4N3.xlsx
+  - .agents/skills/setup-etl-source/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DLBB3VRB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B09MKF3RPW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0D5HLHFNB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F99F11BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FK9ZN46W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B09Q5BQ9FM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B086W2L7LZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B01M0QJ2MO.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0G13F42QT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C8SBYXPQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0B96LD4X4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07B7QB3WD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CY3PWWTQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09QLVGVJJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07CY1YVL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09R9YJL27.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FKG6WN38.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DLBB3VRB.xlsx
+  - .agents/skills/spectra-archive/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B09XLGLX5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B074N6RHP6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B07W85ZPL1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FL267TCG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0D958SN5L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B086W2L7LZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FX4NX6HM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BHL8TS7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B07FFGYWJ6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07ZQV252K.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0D97YBP2X.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B01K73KIMO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202306.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B06XNQH196.xlsx
+  - .playwright-mcp/console-2026-03-06T00-49-10-858Z.log
+  - .agents/skills/codex-review/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0C5D4QVLJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2023/202309.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0FGLF3SDT.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FB212HTG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B08LGGMP5W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0G4CXGMNW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BX2RBN4X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0FHHXHMM8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0DSGPWQH7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0C72S38F3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B09FS5ZVXK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CLWL76HK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0G1Z7TYB7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FN3Q33TB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0D958SN5L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B4WPWDVW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B08P4HHSZT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BPXVV4T7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0BZ3R6MZ8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0C2Y71YXV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0G4R26XSY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0CGHWFF71.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0BTJWSGXV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0756J4R14.xlsx
+  - URBANER/rawdata_Urbaner/KEYS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0CLGYXNMM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B09Q5BQ9FM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FRMTD2YB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0CQB9Y9LR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0DT1227QM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B001K85BN2.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2026/202602.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202507.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B003TW70E0.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0GD73TXJC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0BQQJKYDL.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202501.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DR89DWPY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B09WHTH3ZX.xlsx
+  - .agents/skills/new-company/templates/gitignore_template
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0DCMNN9RP.xlsx
+  - .agents/skills/new-company/templates/app_R_template
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0CT5CDBL2.xlsx
+  - .agents/skills/spectra-ingest/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DWX1J8D6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0BRNJ14YJ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B08P9HNNCX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B07CZ3KDN9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GLJRLS5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202510.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0FNDLD746.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0823RGKHS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B016JNKVHI.xlsx
+  - .agents/skills/suggestion-report/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0G1Z7TYB7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0C3LBYPMZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FCYBJK6T.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B086DRDHKC.xlsx
+  - .agents/skills/new-company/templates/Rprofile_template
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202405.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BKQ9F14X.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09WHTH3ZX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B01HRSZRXM.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DT1227QM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B098BFT3CF.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B09V5PDTSD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0F66FZHY3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B086RHFJJV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0FJXTP8TS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FC5DV7BH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0GL2GP74J.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B015SGHFO4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0GLJRLS5G.xlsx
+  - .agents/skills/new-company/templates/env_template
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DFH3YPTJ.xlsx
+  - .agents/skills/new-company/templates/README_template.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FVG4YZP3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202504.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B092H8XHDG.xlsx
+  - shared/global_scripts
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B4WPWDVW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B5Q6FJYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B6F1G63Z.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202405.txt
+  - URBANER/rawdata_Urbaner/產品KEYS命名規範說明書.docx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B01B5JCT4E.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0G4R26XSY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08B659G81.xlsx
+  - .agents/skills/spectra-audit/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY4LX65R.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0FRNDSY52.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0B4NN7GL7.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DCVSRNN1.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0FNDLD746.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BL2YWH3N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0DSKZWWD4.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0D46JYD7F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0BJ185758.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202508.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B0B6B6K4YD.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CTQ1WG87.xlsx
+  - MAMBA
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0CTQ68LH8.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0BGJHMJHW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B01HRSZRXM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/005_Foil_Shavers/B0C6LD957K.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0F631Z3XH.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BNKRNS85.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B004EBU3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FJS3QR1W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0CY4GJKJ7.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B07YFFLDQB.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0C72S38F3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F5VJD5DQ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202408.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07Q34D62F.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B01N5CAOZA.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0GD67VCG6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0BY1KRJZ1.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FHXTJ8JN.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0BHYZV3HY.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0FYGVHX32.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B00BB5YHEI.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0FRNDSY52.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B004EBU3BW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07CY1YVL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DDBY1X2M.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B09HZTKLNP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0F4R3QMKX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B07GGGJHZW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B096VP4L1W.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B09MKF3RPW.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWWPLCP.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202403.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07Q34D62F.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B07LGMG4B6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTCGQSC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0FVFD1775.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0CQKZ3N5G.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0742G961R.xlsx
+  - .agents/skills/transcript-correction/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0DCMHTXJ6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0F483XM9C.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B08NWTM5HQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FLB5X6SQ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0DMNLL13F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B07NPBQSKY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B0D5HLHFNB.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B01M0QJ2MO.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWWPLCP.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09R9YJL27.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BBLJFS55.xlsx
+  - URBANER/rawdata_Urbaner/amazon_demographic/US_Demographics_Simple_Month_2024_02_29.csv
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0FHWY9BV9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B07QZGP562.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0FXMGVCYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B079MN2G6N.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FL267TCG.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B098NSHBQK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B008KEJ1LM.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B001MBV4U6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0C3LBYPMZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B092H8XHDG.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0BTJWSGXV.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0FS1TX2XL.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0BNKRNS85.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0F997FHHR.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0C2Y71YXV.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B086RHFJJV.xlsx
+  - .agents/skills/transcript-action-items/SKILL.md
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0DWK397VF.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0B7R5TJLD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B0FHWXDSJ9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202401.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B017GRRSB8.xlsx
+  - .agents/skills/add-principle/SKILL.md
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0BHYZV3HY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DP2T4NSK.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07ZQVT7GJ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0CYQ4HF4P.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CTQ1WG87.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07VYJ6SKS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B09F98J1GS.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B093HJJV9L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/004_Eyebrow_Trimmers/B0DMSRY4N3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B01N5CAOZA.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B07SSRDCHT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B0D5QZGZ39.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTY4PWF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2024/202403.txt
+  - .agents/skills/new-company/templates/app_config_template.yaml
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0G492LXS9.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B0BXT859DN.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DJW8J1L6.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2026/202601.txt
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202602.txt
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0CLWL76HK.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/002_Nose_Ear Hair_Trimmers/B0F66FZHY3.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/007_Pet_Nail_Clipper/B07GGGJHZW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202508.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0G5JTRNH6.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B001K85BNC.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0DSB44YJZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/001_Beard_Mustache_Trimmers/B0FQWLR3BW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0DFM6F221.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0G4SH3ZL3.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B09HVDD8ST.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/009_Pet_Comb/B098P6164W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0F62R84FS.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/003_Body_Groomers/B086W36F2W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BMTKLDYX.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B07SZG537S.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/002_Nose_Ear Hair_Trimmers/B0FXMGVCYW.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CGVDNG3L.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/JP_sales/2025/202510.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/001_Beard_Mustache_Trimmers/B0FQW4KWRD.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0B96LD4X4.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0BSTWJL9L.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/008_Dog_Nail_Grinder/B0BMTY4PWF.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/008_Dog_Nail_Grinder/B0G325KH21.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0DMNLL13F.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0B5WRKYBZ.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B0F2MWC94H.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/006_Pet_Electric_Clippers/B0CJ2Z5XWY.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/006_Pet_Electric_Clippers/B0DDBY1X2M.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/010_Baby_Hair_Clippers/B07SRCS8YZ.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/007_Pet_Nail_Clipper/B012KVI4YU.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/009_Pet_Comb/B098P6164W.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/005_Foil_Shavers/B0C5F6X3VT.xlsx
+  - URBANER/rawdata_Urbaner/amazon_sales/US_sales/202512.txt
+  - URBANER/rawdata_Urbaner/amazon_reviews/003_Body_Groomers/B0F997FHHR.xlsx
+  - URBANER/rawdata_Urbaner/amazon_reviews/010_Baby_Hair_Clippers/B0CJZ96983.xlsx
+  - URBANER/rawdata_Urbaner/competitor_sales/004_Eyebrow_Trimmers/B0GCZSPCDW.xlsx
+-->

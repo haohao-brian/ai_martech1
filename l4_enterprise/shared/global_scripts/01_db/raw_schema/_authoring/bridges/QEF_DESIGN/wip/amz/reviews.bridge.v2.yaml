@@ -1,0 +1,104 @@
+prerawdata_source:
+  company: QEF_DESIGN
+  platform: amz
+  source_type: xlsx
+  source_uri: data/local_data/rawdata_QEF_DESIGN/amazon_reviews/**/*
+  sheet_name: ~
+  schema_fingerprint:
+    algorithm: sha256
+    value: 24c9accb0b01cff81746a50d9497c5bfb9acc5eaf7794ab6a83e4dd141529197
+    fingerprinted_against: 'B07KRVMT5Y.xlsx (full read, 400 rows, stable col_types
+      per Gotcha #1)'
+    fingerprinted_at: '2026-05-10T04:32:57Z'
+canonical_target:
+  datatype: reviews
+  platform: amz
+  table: df_amz_reviews___raw
+  schema_yaml_path: 01_db/raw_schema/_authoring/core_schemas.yaml
+  platform_extension_yaml_path: 01_db/raw_schema/_authoring/platform_extensions/amz_extensions.yaml
+field_extractors:
+  product_id:
+    type: column
+    name: ASIN
+    notes: ASIN-shaped (canonical pattern ^[A-Za-z0-9._-]+$). File contains multiple
+      ASINs (variant siblings) despite single-ASIN filename, per observed B07KRVMT5Y.xlsx
+      with 3+ distinct ASINs in 400 rows.
+  customer_id:
+    type: column
+    name: 评论人
+    notes: Reviewer name (e.g. 'April Rankin', 'chuck', 'Mayron Mejía') used as customer_id.
+      Canonical accepts VARCHAR with no pattern restriction; sentinel UNKNOWN_CUSTOMER
+      fires when missing.
+  rating:
+    type: column
+    name: 星级
+    notes: Numeric 1-5, observed distribution well-spread across all 5 levels. Canonical
+      caps to [0, 5].
+  review_date:
+    type: column
+    name: 评论时间
+    notes: Already in %Y-%m-%d format (e.g. '2026-03-17'). No coercion needed; canonical
+      formatter passes through.
+  platform_id:
+    type: const
+    value: amz
+    notes: Three-letter platform_id from canonical_target.platform; matches schema
+      pattern ^[a-z]{3}$.
+  import_source:
+    type: const
+    value: amazon_reviews_xlsx_glob_apify
+    notes: 'Identifies prerawdata source: Apify-scraped Amazon reviews via xlsx glob
+      across 12 PL dirs.'
+  review_text:
+    type: column
+    name: 内容
+    notes: Review body text. Optional in canonical; sentinel '' if NA.
+  amz_review_title:
+    type: column
+    name: 标题
+    notes: Review headline / title.
+  amz_verified_purchase:
+    type: column
+    name: VP评论
+    notes: 'Source uses ''Y'' (385/400 in B07KRVMT5Y.xlsx) or NA (15/400). ''Y'' →
+      true; NA → optional/missing (canonical extension field is required: false, no
+      sentinel needed).'
+  amz_vine_review:
+    type: column
+    name: Vine Voice评论
+    notes: All-NA in observed B07KRVMT5Y.xlsx (400/400 NA). May vary per file; column
+      kept mapped for MP160 enumeration. apply_fallback handles missing per canonical
+      (optional, no sentinel).
+  amz_helpful_votes:
+    type: column
+    name: 赞同数
+    notes: Numeric helpful-vote count; canonical extension type INTEGER.
+unused_source_columns:
+- 型号
+- 图片数量
+- 图片地址
+- 是否有视频
+- 视频地址
+- 评论链接
+- 头像地址
+- 所属国家
+- 评论人主页
+- 红人计划链接
+generated_at: '2026-05-10T04:32:57Z'
+generated_by: glue-bridge skill v1.2
+reviewed_by: REQUIRES_HUMAN_REVIEW
+review_notes: |-
+  Initial draft from /glue-bridge skill Step 6a.
+  Architectural fix for #368 regression (#607): replaces legacy
+  amz_ETL_reviews_0IM/_1ST/_2TR.R chain whose regex extension filter
+  silently dropped 54/147 extensionless xlsx files. Caller migrates to
+  readxl::read_excel(path) magic-byte sniff (handles extensionless natively).
+
+  Cross-references:
+    - #607 (regression issue, this bridge addresses)
+    - #595 (BrandEdge data gap symptom, downstream)
+    - #601 (closed: corrected diagnosis from "AI scoring gap" to ETL filter bug)
+    - #368 (original 5-PL fix held; regression spread to 4 NEW PLs since)
+
+  Pending Step 6 ensemble review (4 reviewers: codex / correctness / security
+  / devils-advocate) per MP102 v1.3.

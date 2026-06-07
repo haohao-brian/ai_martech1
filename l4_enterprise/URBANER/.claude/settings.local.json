@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs basename -a)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)",
+      "Bash(Rscript --version)",
+      "Bash(Rscript -e 'cat\\(\"R version:\", R.version$major, \".\", R.version$minor, \"\\\\n\"\\); cat\\(\"Library paths:\\\\n\"\\); cat\\(paste0\\(\"  \", .libPaths\\(\\), collapse=\"\\\\n\"\\), \"\\\\n\"\\); pkgs <- c\\(\"DBI\", \"duckdb\", \"readxl\", \"readr\", \"dplyr\", \"data.table\", \"tibble\"\\); status <- sapply\\(pkgs, function\\(p\\) requireNamespace\\(p, quietly=TRUE\\)\\); cat\\(\"\\\\nPackage availability:\\\\n\"\\); for\\(p in names\\(status\\)\\) cat\\(sprintf\\(\"  %s: %s\\\\n\", p, ifelse\\(status[p], \"OK\", \"MISSING\"\\)\\)\\)')",
+      "Read(//private/tmp/**)",
+      "Bash(Rscript notebook_a_run.R)",
+      "Bash(tee notebook_a.log)",
+      "Bash(Rscript -e ' *)",
+      "Bash(tee notebook_a_v2.log)"
+    ]
+  }
+}

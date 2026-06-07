@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../docs"
+		},
+		{
+			"path": "../l3_premium/sandbox"
+		},
+		{
+			"path": "../../../../../../../Developer/psychquant-claude-plugins"
+		},
+		{
+			"path": "../../../../../../../Academic/che-cheng-website"
+		}
+	],
+	"settings": {}
+}

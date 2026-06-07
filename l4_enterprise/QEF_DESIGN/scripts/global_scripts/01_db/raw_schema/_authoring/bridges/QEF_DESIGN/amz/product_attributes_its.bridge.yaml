@@ -1,0 +1,314 @@
+prerawdata_source:
+  company: QEF_DESIGN
+  platform: amz
+  source_type: csv
+  source_uri: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_its.csv
+  sheet_name: ~
+  schema_fingerprint:
+    algorithm: sha256
+    value: 8bb08851462442370daf516d97311fe8173bda13f15f6c200e5cf18dcd096338
+    fingerprinted_against: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_its.csv
+      — single file (15 rows); regenerated 2026-05-12 with normalized helper per fix-glue-layer-infra-blockers
+      (#628)
+    fingerprinted_at: '2026-05-12T01:47:46Z'
+canonical_target:
+  datatype: product_attributes_its
+  platform: amz
+  table: df_amz_product_attributes_its___raw
+  schema_yaml_path: 01_db/raw_schema/_authoring/companies/QEF_DESIGN/product_attribute_schemas.yaml
+  platform_extension_yaml_path: 01_db/raw_schema/_authoring/platform_extensions/amz_extensions.yaml
+field_extractors:
+  brand:
+    type: column
+    name: 品牌
+  sales_platform:
+    type: column
+    name: 銷售平台
+  sku:
+    type: column
+    name: SKU
+    value_map:
+      NA: ~
+  asin:
+    type: column
+    name: ASIN
+  product_name:
+    type: column
+    name: 商品名稱
+  rank:
+    type: column
+    name: 排名
+  is_competitor:
+    type: column
+    name: 競爭對手
+  color_lens:
+    type: column
+    name: 鏡片顏色
+  rating_no_distortion:
+    type: column
+    name: 無失真
+  rating_comfortable_wear:
+    type: column
+    name: 穿戴舒適
+  rating_durability:
+    type: column
+    name: 耐用性
+  rating_clear_vision:
+    type: column
+    name: 視野清晰
+  review_rating:
+    type: column
+    name: 評論星級
+  review_count:
+    type: column
+    name: 評論則數
+  url:
+    type: column
+    name: 網址
+    value_map:
+      NA: ~
+  is_benchmark_product:
+    type: column
+    name: 標竿產品
+  price:
+    type: column
+    name: 價格
+  quantity:
+    type: column
+    name: 數量
+  color_temple:
+    type: column
+    name: 鏡腳顏色
+  material_frame:
+    type: column
+    name: 鏡框材質
+    value_map:
+      NA: ~
+  material_lens:
+    type: column
+    name: 鏡片材質
+    value_map:
+      NA: ~
+  material_strap:
+    type: column
+    name: 綁帶材質
+    value_map:
+      NA: ~
+  material_nose_pad:
+    type: column
+    name: 鼻墊材質
+    value_map:
+      NA: ~
+  dimension_frame_width:
+    type: column
+    name: 鏡框寬度
+    value_map:
+      NA: ~
+  dimension_frame_height:
+    type: column
+    name: 鏡框高度
+    value_map:
+      NA: ~
+  dimension_lens_height:
+    type: column
+    name: 鏡片高度
+    value_map:
+      NA: ~
+  dimension_lens_width:
+    type: column
+    name: 鏡片寬度
+    value_map:
+      NA: ~
+  dimension_temple_length:
+    type: column
+    name: 鏡腳長度
+    value_map:
+      NA: ~
+  dimension_bridge_width:
+    type: column
+    name: 鼻橋寬度
+    value_map:
+      NA: ~
+  dimension_strap_length:
+    type: column
+    name: 綁帶長度
+    value_map:
+      '': ~
+  dimension_product_weight:
+    type: column
+    name: 產品重量
+    value_map:
+      NA: ~
+  feature_convertible_design:
+    type: column
+    name: 可轉換設計
+  accessory_strap_included:
+    type: column
+    name: 附帶綁帶
+  feature_adjustable_strap:
+    type: column
+    name: 可調整綁帶
+  accessory_universal_strap:
+    type: column
+    name: 通用綁帶
+  accessory_pouch:
+    type: column
+    name: 眼鏡袋
+  accessory_cleaning_cloth:
+    type: column
+    name: 清潔布
+  pkg_product_manual:
+    type: column
+    name: 產品說明書
+  cleaning_method:
+    type: column
+    name: 清潔方式
+  warranty:
+    type: column
+    name: 保固
+  feature_polarized:
+    type: column
+    name: 偏光功能
+  protection_uv:
+    type: column
+    name: 紫外線防護
+  protection_blue_light:
+    type: column
+    name: 藍光阻隔
+  standard_ansi_z80_3:
+    type: column
+    name: ANSI.Z80.3標準
+  standard_au_nz_sunglasses:
+    type: column
+    name: 澳洲.紐西蘭太陽眼鏡與護目鏡標準
+  standard_uk_eu_sunglasses:
+    type: column
+    name: 英國.歐盟太陽眼鏡標準
+  standard_ce_eu:
+    type: column
+    name: CE.認證.歐盟合格認證.
+  standard_fda_us:
+    type: column
+    name: 美國.FDA.認證
+  standard_iso_certified:
+    type: column
+    name: ISO.國際標準認證
+  standard_children_product_cert:
+    type: column
+    name: 兒童產品合格證明
+  standard_us_cpsia:
+    type: column
+    name: 美國.消費品安全改進法.標準
+  feature_flexible_frame:
+    type: column
+    name: 彈性鏡框
+  material_bpa_free:
+    type: column
+    name: 不含雙酚.A
+  material_phthalate_free:
+    type: column
+    name: 不含鄰苯二甲酸酯
+  material_pvc_free:
+    type: column
+    name: 不含聚氯乙烯
+  material_non_toxic:
+    type: column
+    name: 無毒材質
+  feature_soft_nose_pad:
+    type: column
+    name: 柔軟鼻托
+  feature_moisture_wicking:
+    type: column
+    name: 排汗快乾
+  feature_hypoallergenic:
+    type: column
+    name: 低敏設計
+  feature_anti_reflection:
+    type: column
+    name: 防反射功能
+  feature_anti_scratch:
+    type: column
+    name: 防刮功能
+  feature_shatter_proof:
+    type: column
+    name: 防碎功能
+  feature_impact_resistant:
+    type: column
+    name: 耐衝擊
+  feature_reduce_glare:
+    type: column
+    name: 降低眩光
+  feature_true_color:
+    type: column
+    name: 真實色彩
+  feature_lightweight_design:
+    type: column
+    name: 輕巧設計
+  protection_eye_strain:
+    type: column
+    name: 避免眼睛疲勞
+  feature_perfect_fit:
+    type: column
+    name: 完美貼合
+  feature_long_duration_use:
+    type: column
+    name: 長時間使用
+  feature_recyclable_packaging:
+    type: column
+    name: 可回收包裝
+  feature_waterproof:
+    type: column
+    name: 防水功能
+  protection_eye_general:
+    type: column
+    name: 眼睛保護
+  color_vibrant:
+    type: column
+    name: 鮮艷顏色
+  demographic_infant:
+    type: column
+    name: 嬰兒
+  demographic_kids:
+    type: column
+    name: 兒童
+  demographic_girl:
+    type: column
+    name: 女孩
+  demographic_boy:
+    type: column
+    name: 男孩
+  demographic_newborn:
+    type: column
+    name: 新生兒
+  activity_gift:
+    type: column
+    name: 送禮
+  scene_sunny:
+    type: column
+    name: 晴天場景
+  scene_rainy:
+    type: column
+    name: 雨天場景
+  activity_walking:
+    type: column
+    name: 散步
+  scene_outdoor:
+    type: column
+    name: 戶外場景
+  scene_beach:
+    type: column
+    name: 海灘
+  scene_park:
+    type: column
+    name: 公園
+  style_playful:
+    type: column
+    name: 俏皮風格
+unused_source_columns:
+- etl_import_timestamp
+- etl_import_source
+- etl_product_line_id
+- etl_phase
+generated_at: '2026-04-29T09:06:48Z'
+generated_by: 'gen_product_attribute_bridges.R (qef-product-master-redesign 9.6, #460)'
+reviewed_by: REQUIRES_HUMAN_REVIEW

@@ -1,0 +1,39 @@
+# MP165 v1.3 DRV-Output Shape Contracts — kitchenMAMA (美食鍋)
+# Spectra change: mp165-drv-output-shape-gate (#668)
+#
+# Gate: shared/global_scripts/23_deployment/drv_output_shape_gate.R
+# Note: kitchenMAMA's app_config.yaml has no `pipeline.platforms:` section
+#   (cloned template state). Tables in app_data.duckdb are minimal:
+#   df_customer_profile (7349) / df_dna_by_customer (14260) / df_position (40).
+#   No Poisson tables, no sales_complete_time_series, no D05 macro tables.
+#
+# File naming: tolower("kitchenMAMA") = "kitchenmama" (no underscore separator).
+#   This matches the gate's locate_contracts_path() default and the locate_contracts_path test.
+#
+# Severity choices (2026-05-14 baseline):
+#   - DNA + position tables: critical (real data, well-populated)
+#   - All other DRV outputs: NOT declared (declarative opt-out — table
+#     absent from app_data, gate naturally skips)
+#
+# Sunset: 2026-06-13 (per MP165 v1.3 default)
+
+company: kitchenMAMA
+
+drv_contracts:
+
+  all:
+
+    df_customer_profile:
+      l2_row_count_min: 1000
+      severity: critical
+
+    df_dna_by_customer:
+      l2_row_count_min: 5000
+      severity: critical
+
+    df_position:
+      l2_row_count_min: 20
+      severity: critical
+
+# Per-company opt-in to strict-mode before sunset (default false)
+strict_mode: false

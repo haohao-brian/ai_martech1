@@ -1,0 +1,275 @@
+---
+title: "IC_R011: Commercial Project Low-Bar Issue Filing"
+subtitle: "When in doubt, file an issue — codify the bias toward audit trail in commercial codebases"
+chapter: "CH06"
+category: "rule"
+number: "IC_R011"
+date-created: "2026-05-03"
+date-modified: "2026-05-03"
+author: "Claude (issue #516, triggered by user instruction in #455 close)"
+type: "rule"
+law: "Integration & Collaboration Law Implementation Rules"
+article-number: "Article 11"
+parent_principle: "IC_R009"
+related_to:
+  - "IC_R009": "Bidirectional Commit-Issue Traceability — IC_R011 lowers the threshold for what counts as an 'issue'; IC_R009 enforces that every issue has commits and every commit references an issue"
+  - "IC_R010": "Issue Source Confidence Triage — IC_R010 governs routing of opened issues; IC_R011 governs filing threshold (when to open). Orthogonal axes both apply."
+  - "MP155": "Minimize Human Input — orthogonal: MP155 minimizes human INPUT effort; IC_R011 maximizes audit TRAIL completeness. Both reduce maintenance debt"
+  - "MP029": "No Fake Information — sister: don't pretend a concern doesn't exist by failing to file"
+  - "DOC_R009": "Triple-Layer Sync — this rule itself follows DOC_R009"
+binds:
+  - "shared/global_scripts/00_principles/docs/en/part1_principles/CH06_integration_collaboration/rules/IC_R011_commercial_project_low_bar_issue_filing.qmd"
+  - "shared/global_scripts/00_principles/llm/CH06_ic.yaml"
+  - "shared/global_scripts/00_principles/.claude/rules/01-always.md"
+  - "AI agent behavioral norm (no specific code files bound — bind is to the heuristic governing whether to open new GitHub issues)"
+---
+
+## Statement
+
+In commercial-project codebases (default-on for `kiki830621/ai_martech_*` family + 5-company ai_martech_l4_enterprise consuming companies; opt-out via repo CLAUDE.md `# Type: personal-repo` flag), **AI agents SHOULD bias toward filing GitHub issues for any verifiable concern** — bug, design ambiguity, observed friction, deferred work, sister bug discovered during reproduction, or any out-of-scope item with verifiable form — **rather than treating "too small to file" as the default.**
+
+When in doubt: **file the issue.** Cost ratio favors filing 30:1 (30 seconds to file vs. 30 minutes to reconstruct context after forgetting).
+
+## Why
+
+This principle codifies an instruction the user explicitly issued in commercial-project context (#455 close conversation, 2026-05-03):
+
+> 「商業專案不管多小的問題都要盡量開 issue」
+
+Existing IDD principles cover **routing of opened issues** (IC_R010) and **bidirectional traceability** (IC_R009), but no principle codified **when to open**. AI default heuristic in this session repeatedly biased toward conservative filing ("considered & rejected, no issue needed"), and user repeatedly explicit-overrode toward "file it." The pattern indicates AI default is mis-calibrated for commercial contexts.
+
+Commercial-project context differs from personal/OSS in:
+
+- **Multi-party collaboration:** 5 consuming companies share `shared/global_scripts/`; observations one engineer dismisses become tomorrow's surprises for another
+- **Customer-facing artifacts:** dashboards, deliverables → any small bug may surface to client
+- **Audit trail = contract value:** "what did we observe, what did we resolve" is part of professional service
+- **Context decay:** judgments like "too small to be worth filing" are themselves contextual — what feels obvious now is rediscovery overhead three months later
+- **Cost asymmetry:** filing an issue costs ~30 seconds (gh issue create with prefilled body); reconstructing lost context costs ~30 minutes. 30:1 ratio strongly favors filing.
+
+In personal/OSS contexts, conservative filing is rational (issue tracker noise from solo work is real). The principle scope is therefore explicit: **commercial only**, with opt-out for any commercial repo that prefers personal-repo discipline.
+
+## Scope (Files Bound)
+
+**Bind type:** AI behavioral norm (not specific code files).
+
+**In-scope codebases (default-on):**
+- All `kiki830621/ai_martech_*` repositories
+- `ai_martech_l4_enterprise` and all 5 consuming company codebases (QEF_DESIGN, D_RACING, MAMBA, WISER, kitchenMAMA)
+- `PsychQuant/*` repositories used commercially
+- Any repo whose CLAUDE.md explicitly identifies as commercial
+
+**Out-of-scope codebases (default-off):**
+- Personal repos (any repo CLAUDE.md flagged `# Type: personal-repo`)
+- OSS contributions where the upstream maintainer's filing discipline governs
+- Hobby / experimental code
+
+**Override mechanisms (per Decision 3 — defense in depth):**
+- Environment variable `AI_LOW_BAR_ISSUE_FILING=false` for temporary silence (emergency escape)
+- Repo CLAUDE.md flag `# Disable IC_R011` for permanent opt-out
+
+## Default-On Triggers (when SHOULD file)
+
+AI SHOULD file an issue when any of these surface in commercial-project context:
+
+1. **Verifiable behavior gap, inconsistency, or bug** — even a 1-line fix
+2. **Skill / plugin / tool design ambiguity or friction** — observed during use
+3. **Code review minor smells** — typo, naming inconsistency, stale comment
+4. **Plan tier explicit out-of-scope items** — if verifiable concern, not pure speculation
+5. **Deferred work referenced in closing comments** — "future" / "TODO" / "follow-up" must materialize as issue
+6. **Sister bugs discovered during manual reproduction** — same root cause, different file
+7. **Out-of-scope items in implementation that user might forget** (the trigger for this very principle)
+
+## Default-Off Exemptions (narrow, when MAY skip)
+
+AI MAY skip filing when:
+
+1. **Pure speculation / brainstorm** — no verifiable form yet → goes through IC_R010 `confidence:exploratory` + Lab project, NOT a separate filing decision
+2. **Already covered by an existing open issue** — comment on existing issue rather than file duplicate
+3. **AI-hallucinated concern** — AI thinks something might be wrong but no actual evidence in codebase. STOP, verify first (per MP029)
+4. **Constraint, not TODO** — Plan documents "we will not change X" as a deliberate constraint, not a deferred action
+5. **Meta self-reference** — a PR doesn't file follow-up issues for being a PR
+
+When uncertain whether something is exemption #1 (speculation) vs. trigger #1 (verifiable gap): **default to filing.** If the issue turns out to be invalid, close it within minutes; the audit trail still exists.
+
+## Cost Calibration
+
+| Action | Cost |
+|---|---|
+| File an issue (gh issue create with prefilled body) | ~30 seconds |
+| Reconstruct context after forgetting (re-read code, re-grep, re-trace through commits) | ~30 minutes |
+| **Cost ratio** | **30:1 in favor of filing** |
+
+The ratio is the principle. Even if 1-in-30 issues turns out to be invalid, the math favors filing.
+
+## Anti-patterns
+
+| Anti-pattern | Compliant pattern |
+|---|---|
+| "太小不值得開" silent skip | File it; mark `confidence:vague` or `priority:P3` if minor |
+| Discuss in conversation, never file | If it's verifiable and worth saying twice, it's worth an issue |
+| Closing summary mentions "follow-up" but no issue created | Closing summary's follow-up references MUST link to filed issues |
+| AI judgment "we considered & rejected, no issue needed" for verifiable items | Distinguish CONSTRAINT (don't file) from DEFERRED (file) |
+| Sister bug discovered → "same as #N, just note in passing" | File as separate sister issue with cross-link |
+
+## Compliant Patterns (this very session's examples)
+
+The session that triggered this principle dogfooded the spirit successfully:
+
+- **#455 close** → 4 follow-up issues filed for verify findings (#511 / #512 / #513 / #514)
+- **#510 manual reproduction** → sister bug discovered, immediately filed as #518
+- **#510 Plan-tier out-of-scope** → architectural Strategy C deferred but filed as #517
+- **#510 verify** → 2 LOW findings filed as #519 (combined)
+- **#518 manual reproduction** → third sister bug filed as #520
+- **#516 Plan-tier out-of-scope (this issue itself)** → 3 enhancements filed as #521 / #522 / #523
+- **Skill design gap** observed during #455 close → filed as #515
+- **User explicit instruction** → filed as #516 (this principle)
+
+11 follow-up issues filed across the session. Each took ~30 seconds. Audit trail intact.
+
+## Disambiguation: IC_R011 vs IC_R010
+
+| Axis | IC_R010 (routing) | IC_R011 (filing threshold) |
+|---|---|---|
+| **Question answered** | Where does an opened issue go? | When should I open an issue? |
+| **Inputs** | Source × Confidence × Schedule | Verifiability × Commercial scope × Triggers |
+| **Output** | Milestone / Project / Label routing | File-or-skip decision |
+| **Sequence** | After IC_R011 says "file" | Before IC_R010 routes |
+
+Both apply to the same issue. IC_R011 first (decide to file), then IC_R010 (route the filed issue).
+
+A `confidence:exploratory` issue under IC_R010 is **not the same** as a "skipped under IC_R011" decision: exploratory issues ARE filed (per IC_R011); they just route to Lab project (per IC_R010). Skip-under-IC_R011 means "no issue created at all."
+
+## Disambiguation: IC_R011 vs MP155
+
+| Axis | MP155 (Minimize Human Input) | IC_R011 (Low-Bar Issue Filing) |
+|---|---|---|
+| **What is minimized** | Effort asked of user | (nothing minimized — opposite direction for tracker) |
+| **What is maximized** | Automation / system derivation | Audit trail completeness |
+| **Conflict?** | NO — orthogonal axes |
+| **Combined behavior** | AI minimizes asking user; AI maximizes filing for itself | |
+
+MP155 says "don't ask the user about every small thing." IC_R011 says "do file every verifiable concern." The user input minimized in MP155 is **answers**; the audit trail maximized in IC_R011 is **issues**. Both reduce overall maintenance debt — fewer interruptions for user, more findable history for posterity.
+
+## Files Bound (Tier-2 normativity)
+
+This principle's `binds:` list is intentionally minimal:
+
+- The .qmd, llm/yaml, and .claude/rules entries (DOC_R009 three-layer sync)
+- AI agent behavioral norm (no specific code files; bind is to AI heuristic)
+
+No source code is bound, because IC_R011 is a behavioral default, not a Tier-2 schema contract. Enforcement is via:
+
+- AI's own internal heuristic (load CLAUDE.md → see IC_R011 → bias toward filing)
+- Code review during PR (reviewer can call out missing follow-up issues)
+- Eventually mechanical enforcement via #521 (post-IC_R011 follow-up — hook/linter backstop)
+
+## Change Discipline
+
+Modifying IC_R011 (wording / scope / triggers) requires:
+
+1. **DOC_R009 three-layer sync:** .qmd → llm/CH06_ic.yaml → .claude/rules/01-always.md
+2. **IC_P002 cross-co verification:** principle changes apply to all 5 consuming companies via shared/ subrepo (trivially identical, but commit message MUST contain `Verified:` trailer listing 5 companies)
+3. **No silent amendment:** behavioral norms can't be silently weakened. Any wording softening (e.g., SHOULD → MAY) requires explicit reasoning in commit message.
+
+## Non-Goals
+
+- **Not** a mechanical linter — IC_R011 doesn't add `if !filed_issue stop()` checks. Enforcement is review + AI heuristic. Mechanical layer is filed as #521 (out-of-scope follow-up).
+- **Not** a replacement for IC_R010 routing — IC_R010 still governs routing; IC_R011 just lowers the open-or-not threshold.
+- **Not** a mandate to fix immediately — filing the issue is enough. Fix work happens via separate `idd-implement` cycle.
+- **Not** a mandate for human users — humans benefit from low-bar filing but the principle scope is AI agent behavior. Humans SHOULD also follow but no enforcement.
+
+## Rationale (trade-offs)
+
+### Why default-on, not opt-in?
+
+Opt-in forces every commercial repo to remember to enable. The default for AI agents touching multiple commercial codebases should be "file unless told otherwise." Decision 2 = C (default-on with opt-out) achieves this.
+
+### Why SHOULD, not SHALL?
+
+Strict SHALL would create false-positive risk: AI files an issue for every passing observation, tracker fills with low-value items. SHOULD permits judgment within explicit triggers and exemptions. Decision 1 = B.
+
+### Why redundant escape hatches?
+
+`AI_LOW_BAR_ISSUE_FILING=false` env var is for temporary silence (emergency / unusual session). Repo-level CLAUDE.md flag is for permanent opt-out. Both exist (Decision 3 = C) so user has fast path AND durable path. Defense in depth.
+
+### Why AI primary, human secondary?
+
+IDD discipline is AI-driven workflow. Humans benefit from low-bar filing but typically have different cognitive overhead profile (a human might remember context better than AI across sessions). Bind tightly to AI; encourage but don't enforce humans. Decision 4 = B.
+
+## Rollback Strategy
+
+If IC_R011 causes tracker noise problems:
+
+1. **Phase 1 (immediate):** Use `AI_LOW_BAR_ISSUE_FILING=false` env var per session
+2. **Phase 2 (per-repo):** Add `# Disable IC_R011` to repo CLAUDE.md
+3. **Phase 3 (principle-level):** Amend IC_R011 wording (tighten triggers, expand exemptions) via standard DOC_R009 three-layer sync + IC_P002 verify
+
+Rolling back the principle entirely (delete IC_R011 from system) would require IC_P002 verify across 5 companies and explicit user approval — irreversible decisions are deliberate.
+
+## Migration Plan
+
+### Phase A — Codify (this PR, #516)
+- Author IC_R011.qmd (Layer 1)
+- Sync llm/CH06_ic.yaml `principle_count` 7 → 8 + IC_R011 entry + hierarchy (Layer 2)
+- Sync .claude/rules/01-always.md (Layer 3)
+- Commit + push with `Verified:` trailer
+
+### Phase B — Dogfood Backfill (limited)
+- Audit recent (last 1-2 weeks) closed issues for retroactive compliance
+- Where closing summaries mention "follow-up" / "deferred" without filed issues → file retroactively
+- Limit to recent issues (not full history) to bound scope
+
+### Phase C — Plugin Surface (filed as #523)
+- Update idd-* skills to surface IC_R011 awareness during their workflows (e.g., AskUserQuestion at appropriate checkpoints)
+- Out-of-scope for #516; tracked in #523
+
+### Phase D — Mechanical Enforcement (filed as #521)
+- Hook / linter backstop for behavioral drift
+- Out-of-scope for #516; tracked in #521
+
+### Phase E — Mechanical Detection (filed as #522)
+- Heuristic commercial-vs-personal repo detection (alternative to manual flag)
+- Out-of-scope for #516; tracked in #522
+
+## Examples
+
+### Example 1: Verifiable behavior gap (file it)
+
+> AI observes during code review: "function `foo()` returns NULL in 2 of 5 paths — is that intentional? No clear reason."
+>
+> **File:** `[bug] foo() returns NULL inconsistently — clarify intent or fix`. Confidence:vague (need user clarification). 30 seconds.
+
+### Example 2: Pure speculation (skip)
+
+> AI wonders: "what if `bar()` in 3 months has performance issues at 100k rows?"
+>
+> **Skip:** No verifiable evidence. If actually observed later → file then. (If the speculation is genuinely worth tracking, file as `confidence:exploratory` in Lab project per IC_R010 — but that's a separate decision routing through IC_R010, not an IC_R011 skip.)
+
+### Example 3: Sister bug during reproduction (file it)
+
+> Manual reproduction of #510 fix succeeds for `gen_*.R` but hits same pattern in `fix_wiser.R`.
+>
+> **File:** `[bug] fix_wiser sister bug to #510`. Confidence:confirmed (verifiable: I just hit it). Don't try to fix in #510 — separate issue, separate scope. 30 seconds.
+
+### Example 4: Plan-tier out-of-scope (file it)
+
+> #510 Plan section says "Strategy C (architectural autoinit policy) deferred."
+>
+> **File:** `[refactor] Strategy C autoinit policy from #510`. Confidence:confirmed. Decision 3 = Option A. 30 seconds.
+
+### Example 5: Constraint, not TODO (skip)
+
+> #510 Plan section says "Don't modify gen_*.R business logic, only wrap top-level."
+>
+> **Skip:** This is a CONSTRAINT preventing scope creep, not a deferred action. Nothing to file.
+
+## References
+
+- **#516** — issue triggering this principle
+- **#455 close** — original user instruction
+- **IC_R010** — sister principle (routing axis)
+- **IC_R009** — sister principle (traceability)
+- **MP155** — orthogonal sister (input minimization)
+- **MP029** — sister (no fake information)
+- **DOC_R009** — three-layer sync mechanism
+- **#521** / **#522** / **#523** — explicit follow-up issues for IC_R011 mechanical layers

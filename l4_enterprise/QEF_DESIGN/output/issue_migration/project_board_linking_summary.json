@@ -1,0 +1,111 @@
+{
+  "project_numbers": {
+    "project:brandedge": {
+      "title": "GS | BRANDEDGE",
+      "number": 7,
+      "url": "https://github.com/users/kiki830621/projects/7"
+    },
+    "project:kitchenmama": {
+      "title": "GS | KITCHENMAMA",
+      "number": 8,
+      "url": "https://github.com/users/kiki830621/projects/8"
+    },
+    "project:mamba": {
+      "title": "GS | MAMBA",
+      "number": 6,
+      "url": "https://github.com/users/kiki830621/projects/6"
+    },
+    "project:qef_design": {
+      "title": "GS | QEF_DESIGN",
+      "number": 9,
+      "url": "https://github.com/users/kiki830621/projects/9"
+    },
+    "project:sandbox-vitalsigns-insightforge-brandedge": {
+      "title": "GS | SANDBOX_VITALSIGNS_INSIGHTFORGE_BRANDEDGE",
+      "number": 12,
+      "url": "https://github.com/users/kiki830621/projects/12"
+    },
+    "project:shared": {
+      "title": "GS | SHARED",
+      "number": 10,
+      "url": "https://github.com/users/kiki830621/projects/10"
+    },
+    "project:unknown": {
+      "title": "GS | UNKNOWN_TRIAGE",
+      "number": 11,
+      "url": "https://github.com/users/kiki830621/projects/11"
+    }
+  },
+  "expected_counts": {
+    "project:brandedge": 9,
+    "project:kitchenmama": 1,
+    "project:mamba": 97,
+    "project:qef_design": 6,
+    "project:sandbox-vitalsigns-insightforge-brandedge": 1,
+    "project:shared": 5,
+    "project:unknown": 32
+  },
+  "added_missing_counts": {
+    "project:brandedge": 0,
+    "project:kitchenmama": 0,
+    "project:mamba": 0,
+    "project:qef_design": 0,
+    "project:sandbox-vitalsigns-insightforge-brandedge": 0,
+    "project:shared": 0,
+    "project:unknown": 0
+  },
+  "already_present_counts": {
+    "project:brandedge": 9,
+    "project:kitchenmama": 1,
+    "project:mamba": 97,
+    "project:qef_design": 6,
+    "project:sandbox-vitalsigns-insightforge-brandedge": 1,
+    "project:shared": 5,
+    "project:unknown": 32
+  },
+  "verification": {
+    "project:brandedge": {
+      "ok": true,
+      "missing_count": 0,
+      "board_item_count": 9,
+      "expected_issue_count": 9
+    },
+    "project:kitchenmama": {
+      "ok": true,
+      "missing_count": 0,
+      "board_item_count": 1,
+      "expected_issue_count": 1
+    },
+    "project:mamba": {
+      "ok": true,
+      "missing_count": 0,
+      "board_item_count": 97,
+      "expected_issue_count": 97
+    },
+    "project:qef_design": {
+      "ok": true,
+      "missing_count": 0,
+      "board_item_count": 6,
+      "expected_issue_count": 6
+    },
+    "project:sandbox-vitalsigns-insightforge-brandedge": {
+      "ok": true,
+      "missing_count": 0,
+      "board_item_count": 1,
+      "expected_issue_count": 1
+    },
+    "project:shared": {
+      "ok": true,
+      "missing_count": 0,
+      "board_item_count": 5,
+      "expected_issue_count": 5
+    },
+    "project:unknown": {
+      "ok": true,
+      "missing_count": 0,
+      "board_item_count": 32,
+      "expected_issue_count": 32
+    }
+  },
+  "errors": []
+}

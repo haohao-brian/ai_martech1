@@ -1,0 +1,97 @@
+prerawdata_source:
+  company: QEF_DESIGN
+  platform: amz
+  source_type: gsheets
+  source_uri: gsheet://1istNxsgutIfTC9faLM7HdsQzfnphHXLXtahGKYN5oCA
+  sheet_name: SKU to ASIN
+  schema_fingerprint:
+    algorithm: sha256
+    value: '0000000000000000000000000000000000000000000000000000000000000000'
+    fingerprinted_against: PLACEHOLDER — Gsheet `SKU to ASIN` tab not yet exported
+      as CSV
+    fingerprinted_at: '2026-04-28T00:00:00Z'
+canonical_target:
+  datatype: company_product_extension
+  platform: amz
+  table: df_amz_company_product_extension___raw
+  schema_yaml_path: 01_db/raw_schema/_authoring/core_schemas.yaml
+  platform_extension_yaml_path: 01_db/raw_schema/_authoring/platform_extensions/amz_extensions.yaml
+field_extractors:
+  sku:
+    type: column
+    name: SKU
+    coercion: trimws
+  marketplace:
+    type: const
+    value: amz_us
+  brand:
+    type: column
+    name: 品牌
+    coercion: trimws
+    notes: |
+      Some QEF SKUs may have empty Brand cell when the Gsheet is partially
+      filled. Schema fallback rule (sentinel UNKNOWN_BRAND) handles those
+      rows; bridge does not need apply_fallback explicitly.
+  amz_asin:
+    type: column
+    name: ASIN
+    notes: |
+      May be NULL for SKUs that haven't launched on amz yet. Schema
+      optional_fields means NULL is permitted in the target table.
+  product_line_id:
+    type: column
+    name: 產品線
+    notes: |
+      Source col may use Chinese product line name (e.g., '抗藍光眼鏡');
+      DRV layer handles the lookup to canonical pl_id (e.g., 'blb') via
+      df_product_line registry. Bridge stores the source value as-is.
+  product_name:
+    type: column
+    name: 商品名稱
+  cost_factory_price:
+    type: column
+    name: 商品成本-廠價
+  cost_factory_price_estimated_23pct:
+    type: column
+    name: 廠價預估23%
+  fee_inbound_freight:
+    type: column
+    name: 頭程費
+  fee_fba:
+    type: column
+    name: FBA費
+  fee_warehouse_rent:
+    type: column
+    name: 倉租
+  fee_amazon_commission:
+    type: column
+    name: 亞馬遜抽佣
+  fee_amazon_commission_pct:
+    type: column
+    name: 亞馬遜抽佣比例
+  fee_other:
+    type: column
+    name: 其他費用
+  price_listing:
+    type: column
+    name: 現售價
+  price_msrp:
+    type: column
+    name: 建議售價
+  net_profit:
+    type: column
+    name: 商品淨利
+  profit_margin_pct:
+    type: column
+    name: 淨利率
+  status:
+    type: column
+    name: 狀態
+    coercion: tolower + trimws
+  launch_date:
+    type: column
+    name: 上架日期
+unused_source_columns: []
+generated_at: '2026-04-28T14:15:00Z'
+generated_by: qef-product-master-redesign Phase 9 task 9.7 (#460) — hand-authored
+reviewed_by: REQUIRES_HUMAN_REVIEW

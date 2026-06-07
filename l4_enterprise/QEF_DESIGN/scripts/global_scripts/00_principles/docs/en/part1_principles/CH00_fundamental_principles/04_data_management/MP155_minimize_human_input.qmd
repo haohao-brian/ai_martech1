@@ -1,0 +1,240 @@
+---
+title: "MP155: Minimize Human Input"
+subtitle: "資料欄位先回答 4 問判定 input/view/action surface,預設系統 derive,人類補卡住的"
+category: "Meta-Principle"
+type: "Meta-Principle"
+id: "MP155"
+created: "2026-04-26"
+date_modified: "2026-04-30"
+version: "1.1"
+triggered_by: "Issue #464 — 質疑 Gsheet 為人工輸入 SSOT 假設;#460 4-source resolver 完成後揭露根本問題"
+related_to:
+  - "MP163": "Progressive Completeness (sister principle — MP163 是 MP155 的 pipeline-tolerance corollary。MP155 minimize 該不該需要人類補的欄位數量,MP163 minimize 該已經被 minimized 的人工輸入還沒填完時對 pipeline 的衝擊。兩者一體兩面 — 沒有 MP163,MP155 只能靠 100% 完成度 gating 來部署,違反 MP155 自身的精神;沒有 MP155,MP163 的 sentinel bucket 會無限膨脹。)"
+  - "MP154": "Side Effect Defense (MP154 處理 mapping 失敗時的 field-level 行為;MP155 在更前一層降低需要 mapping 的欄位數量)"
+  - "MP029": "No Fake Information (MP029 禁止系統假裝資料齊全;MP155 透過顯性區分 input vs derived 讓 'derive 不確定' 不被當成 'human entered' )"
+---
+
+## Summary
+
+任何要求人工輸入的資料欄位,必須先證明「無法從現有系統 derive」或「derive 結果不可信賴」。若可 derive,系統先 derive,人類角色降為「review + override」而非「first input」。
+
+資料系統設計時必須回答 4 個問題,決定該欄位的 **input surface**(誰寫?寫到哪?)、**view surface**(誰看?看哪些?)、**action surface**(改變狀態的入口在哪?)。
+
+## Motivation
+
+在 l4_enterprise 的演化中,有把人類當成 cheap data labeler 的傾向 — 業務在 Gsheet 手填 SKU、ASIN、product_name 等系統可從 sales 推導的欄位。這個假設失敗時,silent bug 大量產生:
+
+- **#403 (2026-04-21)** — `amz_ETL_competitor_ids_0IM.R` 用 positional offset(`brand_idx <- col_idx + 4`)解析 Gsheet,本質是「業務手填的欄位順序穩定」假設失敗,導致 100% rpl/psg brand 標 UNKNOWN
+- **#340 (2026-02-15)** — mapping 失敗 silent NA,觸發 MP154 立 Side Effect Defense
+- **#460 (2026-04-25)** — 完成「4-source product master resolver」後仍要求業務在 Gsheet 補 10 欄 master,大部分欄位系統其實已知
+- **#464 (2026-04-25)** — 揭露根本問題:即使整合多源,設計仍預期業務手填可 derive 的欄位
+
+這些事故背後的共通假設是「人輸資料是預設,系統 derive 是例外」。MP155 反轉這個假設:**系統 derive 是預設,人輸資料是「系統真的不知道」的最小集合**。
+
+AI 時代的資料系統,設計者越來越能 derive,principle 該明確規範人/AI 責任邊界。
+
+## Decision Framework
+
+對任何資料欄位 X,依序問 4 個問題:
+
+```
+                     +-----------------------------------+
+                     | Q1: Authoritative source 在哪?    |
+                     +-----------------+-----------------+
+                                       |
+              +------------------------+------------------------+
+              |                        |                        |
+         系統有 (sales/API)         人類獨家                  兩邊都有
+              |                        |                        |
+              v                        v                        v
+        +----------+              +----------+         +-----------------+
+        |   Q2:    |              | Human-   |         | Q3: 系統能否    |
+        |  錯了    |              | Decided  |         |   detect 異常?  |
+        | 成本高?  |              | (必填)   |         +--------+--------+
+        +----+-----+              +----------+                  |
+             |                                          +-------+--------+
+       +-----+-----+                                    |                |
+       |           |                                    能              不能
+     高(KPI)    低(cosmetic)                            |                |
+       |           |                                    v                v
+       v           v                              +----------+      +----------+
+  +--------+  +--------+                          | System-  |      | Q4: 人類 |
+  | System-|  | Either |                          | Suggested|      | 可推翻?  |
+  | Sourced|  |   OK   |                          | (review) |      +----+-----+
+  | +審核  |  | +default|                          +----------+           |
+  | 機制   |  |  system |                                          +-----+-----+
+  +--------+  +---------+                                          |           |
+                                                                   能         不能
+                                                                   |           |
+                                                                   v           v
+                                                              +---------+  +---------+
+                                                              | System- |  | System- |
+                                                              | Sourced |  | Sourced |
+                                                              | +override |  | (純自動) |
+                                                              +---------+  +---------+
+```
+
+**Q1**: Authoritative source 在哪?(系統 / 人類 / 兩邊都有)
+**Q2**: 錯了成本高嗎?(KPI 影響 / cosmetic)
+**Q3**: 系統能否 detect 異常?(可監測 / 無法察覺)
+**Q4**: 人類可推翻嗎?(可 override / 不可)
+
+每個問題都有 deterministic 出口,把欄位歸到三類之一(System-Sourced / Human-Decided / System-Suggested)。
+
+## Three Categories
+
+### System-Sourced
+
+**定義**:authoritative source 在系統(資料庫、API、可計算)。人類不需輸入,系統自動取值。
+
+- **Source authority**:系統(sales table、Amazon SP-API、derived calculation)
+- **Human role**:無(若 Q4 = 能推翻 → 可 override 但非預設)
+- **Examples**:`sku`(從 sales)、`amz_asin`(從 sales)、`product_name`(從 sales)、`launch_date`(從 first_order_date 推論)
+
+### Human-Decided
+
+**定義**:authoritative source 只在人類腦中(business knowledge、policy decision、subjective judgment)。系統無法 derive。
+
+- **Source authority**:人類(業務、admin、policy maker)
+- **Human role**:必填,系統無法替代
+- **Examples**:`product_line_id`(業務分類決策)、`cost`(無系統 API,業務知道)、`brand` 的「正式拼法」(若 sales 無 ground truth)
+
+### System-Suggested
+
+**定義**:系統有部分資訊但不確定(ambiguity、anomaly、low-confidence inference),需人類確認。
+
+- **Source authority**:系統提案 + 人類確認
+- **Human role**:review + correct(透過 input surface,**不是**獨立 action UI)
+- **Examples**:`amz_asin` 在 SKU re-listing 場景(同 SKU 多 ASIN)、`brand` 拼法 fuzzy match、新 SKU 尚未被分類進 product_line
+
+## Three-Surface Model
+
+資料系統設計時必須區分三個 surface:
+
+```
++------------------------------------------------------+
+| Input Surface                                        |
+|   role: 人類「寫入決策」的入口                        |
+|   audience: 業務(編輯權限)                          |
+|   examples: Master Gsheet (Human-Decided 欄位)、     |
+|             Shiny admin form                         |
++------------------------------------------------------+
+
++------------------------------------------------------+
+| View Surface                                         |
+|   role: 人類「看狀態」的入口(view-only)             |
+|   audience: 業務、老闆、新人、審計                    |
+|   examples: Status Gsheet (anyone-with-link view)、  |
+|             Shiny dashboard                          |
++------------------------------------------------------+
+
++------------------------------------------------------+
+| Action Surface                                       |
+|   role: 改變系統狀態的入口                           |
+|   audience: 視 action 性質                          |
+|   design rule: Action SHOULD 降格為 Input 延伸      |
+|   examples: 「approve」= 在 Input Surface 補一筆 row |
+|             (而非獨立 approve 按鈕)                 |
++------------------------------------------------------+
+```
+
+### Action-as-Input Pattern
+
+**Design rule**:Action 操作 SHOULD 實作為 input 資料的延伸,而非獨立 UI action。
+
+**Rationale**:
+
+- **表達力強**:「補一筆 row」可表達多欄資料 + audit trail,「approve/reject」是 1 bit
+- **介面收斂**:business 只在 input surface 寫,view surface 維持純粹
+- **Audit 自動**:input surface 的 edit history 即 action history
+
+**例外**:critical alert(如資料庫崩潰)需獨立 push 通知 + 確認介面,因為「補資料」太慢。
+
+## Notification Etiquette: Pull-not-Push
+
+View surface 必須自動保持新鮮(每次 ETL 結尾 refresh),讓 stakeholders 自己 pull。Push 通知是例外,只用於「**錯過會出事**」的場景(如 critical alert)。
+
+**Rationale**:
+
+- 過度 push → notification fatigue → 業務 ignore → 真的緊急時也被忽略
+- 預設 pull → 業務在自己 cadence 上看 → 看了就採取行動
+- View surface 設為 anyone-with-link 隱性提供 transparency(老闆隨時可看,不用問業務)
+
+**Implementation guidance**:
+
+- Status Gsheet 用 `googlesheets4::sheet_write` 在 ETL 結尾自動寫
+- Share level 設 view-only(anyone-with-link),technical enforcement 取代 documentation discipline
+- 不設 email/Telegram push notification(除非 critical alert)
+
+## Application Examples
+
+QEF product master 6 個欄位走完整 4-question framework:
+
+| 欄位 | Q1 source | Q2 cost | Q3 detect | Q4 override | 結果 category |
+|---|---|---|---|---|---|
+| `sku` | 系統 (sales) | 高(整個 join 壞) | n/a | n/a | **System-Sourced** |
+| `amz_asin` | 系統 (sales) | 高(downstream 全錯) | 能(同 SKU 多 ASIN) | 能(re-listing 場景) | **System-Sourced + override + review** |
+| `product_line_id` | 人類 (業務分類) | 高(DNA 全壞) | n/a | n/a | **Human-Decided** |
+| `brand` | 兩邊 (sales 有但拼法亂) | 中 | 能(fuzzy match) | 能(業務知正式名) | **System-Suggested** |
+| `cost` | 人類 (無系統 API) | 中 | 不能(無 ground truth) | n/a | **Human-Decided + audit warn** |
+| `launch_date` | 系統 (first_order) | 低(誤差幾天無傷) | n/a | 能(實際上市 ≠ 首訂單) | **System-Sourced + override** |
+
+→ 同一個 schema 6 個欄位,**每個欄位的人/AI 邊界都不同**。framework 把 case-by-case 變成可重複的判定流程。
+
+## Anti-Patterns
+
+### Anti-Pattern 1: 把 system-knowable 欄位放 Gsheet 要求業務手填
+
+- **現象**:QEF 把 `amz_asin`、`product_name` 放 Gsheet 要求業務手動維護 SKU↔ASIN 對照
+- **Harm**:10 字 ASIN typo 直接污染 master,downstream KPI 全錯,業務工作量浪費
+- **Source**:#403、#460、#464
+
+### Anti-Pattern 2: 把 human-only 欄位 hardcode 在程式
+
+- **現象**:`cost = sales * 0.4`(假設毛利 60%)
+- **Harm**:違反 MP029 (No Fake Data),且公司毛利不同會 silent 錯誤
+- **Mitigation**:cost 該歸 Human-Decided + audit warn
+
+### Anti-Pattern 3: System-Suggested 沒有 review 機制
+
+- **現象**:系統 fuzzy match brand 後 silent override 業務輸入
+- **Harm**:業務的正確輸入被系統蓋掉,違反 MP154
+- **Mitigation**:System-Suggested 必須 surface 給人類 review,不可 silent override
+
+### Anti-Pattern 4: Human-Decided 但沒 audit warning
+
+- **現象**:`cost` 欄業務填負數或 0,系統 silent 接受
+- **Harm**:下游 profit 計算 NaN/Inf,儀表板顯示異常
+- **Mitigation**:Human-Decided 欄該設 validation rule(例:`cost > 0`)
+
+### Anti-Pattern 5: View surface 有 edit 權限(視覺/權限混淆)
+
+- **現象**:Status Gsheet 開放業務 edit,業務看異常時直接修
+- **Harm**:業務修了 view 但 SoT 在 DuckDB,改完沒生效;業務以為改好實際沒改
+- **Mitigation**:View surface 嚴格 view-only(用 Google Sheets share level enforce),action 回到 Input surface
+
+### Anti-Pattern 6: Push 通知濫用
+
+- **現象**:每次 ETL 完發 email「N 筆異常待 review」,即使 N=0
+- **Harm**:業務 ignore email,真的緊急時也 ignore
+- **Mitigation**:Pull-based,view 自動 refresh,不通知;只 critical alert 才 push
+
+## Relationships
+
+- **MP163 (Progressive Completeness, sister principle, added v1.1, 2026-04-30)** — MP155 的 **pipeline-tolerance corollary**。MP155 從前端說「該不該需要人類補?」(降低需要人類補的欄位數量到最小集);MP163 從後端說「人類還沒補完時 pipeline 怎麼辦?」(永遠跑得到底,缺漏 materialize 為可見 sentinel 並 surface 到 attention loop)。兩者一體兩面 — 沒有 MP163,MP155 的「最小化人工輸入」會被「100% 完成度才能部署」的 gating 邏輯反向擠壓(若 missing input → pipeline halt,則為了避免 halt 必須 pre-fill 全部,違反 MP155 的精神);沒有 MP155,MP163 的 sentinel bucket 會無限膨脹(因為更多欄位需要人類補,更多 row 落到 unclassified)。兩個原則 jointly 成立才能達到「**human input is minimized AND not blocking**」的目標。
+- **MP029 (No Fake Data)** — MP155 的 prerequisite。MP029 禁止假資料(包括「系統假裝 derive 出 cost」),MP155 用 Decision Framework 區分「真能 derive」vs「沒法 derive 必須人輸」
+- **MP154 (Side Effect Defense)** — 互補。MP154 規範「系統 transformation 不可 silent 改變資料」,MP155 進一步規範「**最小化 transformation 中需要人輸的部分**」,System-Suggested 的 review 機制就是 MP154 visible defense 的具體形式
+- **MP151 (No Fallback)** — 同類。MP151 禁止靜默退低品質模式,MP155 禁止靜默把 derive-able 欄位丟給人類(等於把系統的責任 fallback 到人類肩上)
+- **IC_P002 (Cross-Company Verification)** — 套用對象。MP155 屬於 cross-cutting principle,套用到 5 公司時必須走 IC_P002 verification
+- **DOC_R009 (Triple-Layer Sync)** — 文件機制。MP155 本身的建立必須遵守 DOC_R009 三層同步(.qmd → llm/yaml → .claude/rules/md)
+
+## Non-Goals
+
+本 principle 文件**不**涵蓋以下範圍(屬於 Track B `qef-gsheet-three-surface-redesign` 或後續 follow-up):
+
+- 重構 `fn_resolve_company_product_master.R` / `fn_arbitrate_product_master_conflicts.R`(屬 Track B)
+- 修改 QEF Gsheet 結構或 tab 命名(屬 Track B)
+- 修改 `product_master_fields.yaml` 加 `field_class`(屬 Track B)
+- 新增 `gsheet-tab-classification.md` 到 handbook(屬 Track B 或獨立 PR)
+- 回頭 audit 5 個既有領域(客戶 DNA / 行銷策略 / 報表參數 / 產品 catalogue)— 屬後續獨立 IC_P002 audit follow-up
+- 建立 PreToolUse hook 自動偵測違規(deferred to follow-up enhancement)

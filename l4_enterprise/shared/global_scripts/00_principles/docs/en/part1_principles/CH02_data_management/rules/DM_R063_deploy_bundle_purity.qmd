@@ -1,0 +1,228 @@
+---
+id: DM_R063
+title: Deploy Bundle Purity
+subtitle: Posit Connect / Shinyapps.io 部署 bundle 絕不含 local DB files;APP_MODE autoinit 容忍所有本地 DB 缺失
+type: Rule
+category: Data Management
+status: active
+related:
+  - DM_R054   # Metadata Table Storage Pattern (mode-aware canonical)
+  - DM_R056   # Mode-Specific DB Paths
+  - DM_R062   # Canonical DB Path Enforcement
+  - MP142     # Configuration-Driven Pipeline
+  - SEC_R001  # Credential Management
+version: 1.0.0
+date-created: "2026-04-20"
+author: Claude
+law: Data Management
+article-number: Rule 63
+parent_principle: MP064
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+---
+
+# DM_R063: Deploy Bundle Purity {#overview}
+
+## Rule
+
+**Deploy bundles for hosted Shiny runtimes (Posit Connect, Shinyapps.io, or any platform where the local filesystem is transient or cloud-managed) SHALL NOT contain local database files.** Only application code, seed data (CSV/YAML), and deployment metadata ship. Runtime metadata lookups route through mode-aware backends (`dbConnectAppData()` or equivalent), NOT through bundled DuckDB files.
+
+**APP_MODE `autoinit()` running inside a deploy bundle SHALL tolerate absence of every local DB path** — the fail-fast precheck from DM_R056 / `autoinit-failfast-policy` applies ONLY to UPDATE_MODE / GLOBAL_MODE where a local ETL pipeline is expected to produce the files.
+
+## Rationale
+
+Production Shiny apps deployed to Posit Connect (MAMBA as of 2026-04 using `app_config.yaml > database.mode: "supabase"`) read their canonical data from live remote backends (Supabase PostgreSQL, RDS, etc.). Shipping a local `.duckdb` file into the deploy bundle is always wrong for three reasons:
+
+1. **Size + bandwidth cost**. DB files run 1 MB – 100+ MB. Posit Connect bundles re-upload on every deploy; a 100 MB DuckDB multiplies deploy time × every redeploy for every company.
+2. **Staleness vs live Supabase**. If the bundled DuckDB and Supabase disagree (Supabase updated by upload ETL after the last `make deploy-sync`), runtime readers that fall back to DuckDB get stale data. Worse, silent — no warning.
+3. **Startup fragility**. autoinit fail-fast precheck (`#421`) expects every listed path to exist. A bundle that "optionally ships" DB files creates two startup paths (file present vs absent) that must both be tested. Keeping the bundle **pure** (no DB at all) collapses it to one code path.
+
+The invariant works both directions:
+- **Deploy side**: `.rsconnectignore` keeps `*.duckdb` unqualified; Makefile `deploy-sync` never copies DB files.
+- **Runtime side**: APP_MODE `autoinit` does not fail-fast on missing local DBs; downstream readers (`dbConnectAppData()`, `fn_load_product_lines(mode="auto")`) route to the configured remote backend.
+
+This rule codifies the lesson from the three-layer fix chain in #424 (see *Cautionary Tales* below).
+
+## Required Behaviour
+
+### 1. Bundle Content Allowlist (what SHALL ship)
+
+- Application code: `app.R`, `*.Rmd`, `*.qmd`, `scripts/global_scripts/**`, `scripts/nsql/**`
+- Static assets: `www/**`
+- Seed data (text-based): `data/app_data/parameters/**/*.csv`, `app_config.yaml`
+- Deployment metadata: `manifest.json`, `rsconnect/**`, `.Rprofile`, `.rsconnectignore`
+- Secrets reference (NOT the secrets themselves): `.env` with placeholders; real secrets via Posit Connect env vars (SEC_R001)
+
+### 2. Bundle Content Denylist (what SHALL NOT ship)
+
+```
+*.duckdb                   # All DB layers, including meta_data
+*.wal                      # DuckDB write-ahead logs
+data/local_data/**         # Dev-only layer (raw/staged/transformed/processed/cleansed/meta_data)
+data/app_data/*.duckdb     # app_data also stays local
+_targets/**                # ETL orchestration cache
+*.log                      # runtime logs
+_cache/**                  # Quarto / knitr cache
+renv/**                    # Environment setup (reconstruct on server)
+```
+
+### 3. Makefile `deploy-sync` SHALL NOT Copy DB Files
+
+```r
+# ❌ Violation: cp meta_data.duckdb into DEPLOY_DIR
+@cp data/local_data/meta_data.duckdb $(DEPLOY_DIR)/data/local_data/meta_data.duckdb
+```
+
+```makefile
+# ✅ Compliant: rsync with *.duckdb exclude
+rsync -avL --exclude='*.duckdb' --exclude='*.wal' \
+    data/app_data/parameters/ $(DEPLOY_DIR)/data/app_data/parameters/
+```
+
+If a specific DB file is *structurally necessary* in the bundle (rare — e.g., a read-only reference DB smaller than 10 MB that does not live in any remote backend), document the decision in this principle's `exemption_list` section and add the file to an explicit include rule instead of using a `!` negation (which is error-prone).
+
+### 4. `.rsconnectignore` SHALL Keep `*.duckdb` Unqualified
+
+```
+# ✅ Compliant
+*.duckdb
+```
+
+```
+# ❌ Violation: negated exception for a DB file
+*.duckdb
+!data/local_data/meta_data.duckdb
+```
+
+Negation patterns are brittle under rsconnect/rsconnect-python version updates and hide the intent ("why is this one duckdb special?"). Prefer removing the ignore rule entirely or documenting an exemption.
+
+### 5. APP_MODE autoinit SHALL Skip fail-fast Precheck
+
+```r
+# In sc_Rprofile.R
+run_precheck <- !identical(.InitEnv$OPERATION_MODE, "APP_MODE")
+if (run_precheck) {
+  for (name in names(db_path_list)) {
+    if (!file.exists(path)) missing_dbs <- c(missing_dbs, sprintf("  - %s: %s", name, path))
+  }
+}
+if (length(missing_dbs) > 0) stop(...)
+```
+
+UPDATE_MODE and GLOBAL_MODE still fail-fast (they are supposed to run the ETL pipeline — missing DB there is a real error). APP_MODE on Posit Connect is expected to lack local DBs; missing files are not an error there.
+
+### 6. APP_MODE Readers SHALL Route via Mode-Aware Backend Helpers
+
+- `fn_load_product_lines(mode = "auto")` routes via `dbConnectAppData()` when local DuckDB is unreachable (DM_R054 v2.1.1 §7).
+- `dbConnectAppData()` itself honors `app_config.yaml > database.mode`: `duckdb` / `supabase` / `auto` (MP142).
+- Direct `DBI::dbConnect(duckdb::duckdb(), db_path_list$meta_data)` in a Shiny entry WILL fail in Posit Connect — callers MUST use the mode-aware helper.
+
+## Exemption List
+
+No files currently exempted. If you need to ship a DB file in the bundle, add to this list with justification + expected bundle-size impact. Examples of structurally-unavoidable exemptions **do not exist today** — every case encountered so far (#424 cycle) turned out to be solvable by routing through a remote backend.
+
+## Examples
+
+### Compliant
+
+```
+# MAMBA/.rsconnectignore — keeps bundle pure
+data/backups/
+data/etl/
+data/deprecated/
+*.duckdb
+*.wal
+.git/
+.claude/
+_targets/
+logs/
+*.log
+```
+
+```makefile
+# MAMBA/Makefile — deploy-sync copies only text/code
+deploy-sync:
+	@cp app.R $(DEPLOY_DIR)/app.R
+	@cp app_config.yaml $(DEPLOY_DIR)/app_config.yaml
+	@rsync -avL --delete --exclude='*.duckdb' --exclude='*.wal' \
+		scripts/global_scripts/ $(DEPLOY_DIR)/scripts/global_scripts/
+	@rsync -avL --delete --exclude='*.duckdb' \
+		data/app_data/parameters/ $(DEPLOY_DIR)/data/app_data/parameters/
+	@# NOTE: meta_data.duckdb intentionally NOT shipped (Supabase canonical).
+```
+
+```r
+# sc_Rprofile.R — APP_MODE bypasses fail-fast precheck
+run_precheck <- !identical(.InitEnv$OPERATION_MODE, "APP_MODE")
+```
+
+### Violating
+
+```makefile
+# ❌ Shipping meta_data.duckdb into bundle
+@cp data/local_data/meta_data.duckdb $(DEPLOY_DIR)/data/local_data/
+```
+
+```
+# ❌ .rsconnectignore with negated exception
+*.duckdb
+!data/local_data/meta_data.duckdb
+```
+
+```r
+# ❌ APP_MODE fail-fast precheck without mode guard
+for (name in names(db_path_list)) {
+  if (!file.exists(path)) stop("ETL pipeline incomplete")
+}
+# Posit Connect has no local DB → stop() every startup
+```
+
+```r
+# ❌ Shiny entry reads local DuckDB directly
+meta_con <- DBI::dbConnect(duckdb::duckdb(),
+                           db_path_list$meta_data,
+                           read_only = TRUE)
+df_platform <- DBI::dbReadTable(meta_con, "df_platform")
+# Breaks on Posit Connect where meta_data path is absent.
+```
+
+## Cautionary Tales (from #424)
+
+The three-layer fix chain that motivated this rule:
+
+| Commit | Layer | Mistake | Fix |
+|--------|-------|---------|-----|
+| `a8d9aab` | Data | `fn_load_product_lines` hardwired `meta_data.duckdb` | `c90c540` — `mode="auto"` via `dbConnectAppData` |
+| `a8d9aab` | Bundle | `!data/local_data/meta_data.duckdb` exception + `cp meta_data.duckdb` in Makefile | `4daed19` — remove from bundle; `afb30b7` — Makefile NOTE |
+| `a8d9aab` | Runtime | `sc_Rprofile.R` fail-fast precheck ran in APP_MODE | `1014f7b` — precheck scoped to UPDATE_MODE/GLOBAL_MODE |
+
+Each mistake passed the local QEF_DESIGN canary (local DuckDB full) and only failed on Posit Connect. The root invariant — **"bundle has no local DB; runtime tolerates its absence"** — would have caught all three at review time if it had been a named principle.
+
+## Enforcement (Detection)
+
+Suggested pre-commit / CI checks (future work, tracked in #431 follow-ups):
+
+1. Grep `Makefile` (and any `deploy-*` targets) for `cp *.duckdb` or `rsync *.duckdb` patterns without an `--exclude` nearby.
+2. Check every `.rsconnectignore` in the repo for `!*.duckdb` or negated paths matching `\.duckdb$`.
+3. Scan `sc_Rprofile.R` (and any other init script that iterates `db_path_list`) for unconditional `stop()` on `!file.exists`; require an OPERATION_MODE check.
+
+Until CI checks exist, code review SHALL cite DM_R063 when touching any of: `Makefile` deploy targets, `.rsconnectignore`, `sc_Rprofile.R` fail-fast logic, Shiny entry DB reads.
+
+## Related Principles
+
+- **DM_R054 v2.1.1** — Metadata Table Storage Pattern (mode-aware canonical). Defines where metadata lives (local DuckDB vs Supabase). DM_R063 governs what ships.
+- **DM_R056** — Mode-Specific DB Paths. Defines which paths load per OPERATION_MODE. DM_R063 relaxes the precheck in APP_MODE.
+- **DM_R062** — Canonical DB Path Enforcement. Canonical paths are for LOCAL storage; DM_R063 says those paths must not ship.
+- **MP142** — Configuration-Driven Pipeline. `database.mode` drives backend selection at runtime.
+- **SEC_R001** — Credential Management. Supabase credentials via Posit env vars, not bundled `.env`.
+
+## Version History
+
+- **v1.0.0 (2026-04-20)**: Initial. Codifies the invariant surfaced by #424's three-layer hotfix chain (commits `a8d9aab` → `c90c540` → `4daed19` → `1014f7b`). Motivation: prevent future deploy refactors from independently rediscovering the same mistake class.
+
+## Migration Notes
+
+All active companies (MAMBA, QEF_DESIGN, D_RACING, kitchenMAMA, WISER) comply with DM_R063 as of `1014f7b` (deploy-repo) + `4ce4eb7` (shared) + `afb30b7` (MAMBA). No migration required. New companies deploying to Posit Connect SHALL follow this rule from inception.

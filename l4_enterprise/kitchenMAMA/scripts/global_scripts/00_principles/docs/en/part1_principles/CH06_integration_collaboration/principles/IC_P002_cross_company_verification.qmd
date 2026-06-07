@@ -1,0 +1,158 @@
+---
+title: "IC_P002: Cross-Company Verification Principle"
+subtitle: "Every change to shared subrepo code must be verified against all consuming companies for applicability and absence of side effects"
+category: "Integration & Collaboration"
+type: "Principle"
+status: "active"
+created: "2026-04-24"
+implements: "MP122"
+related:
+  - "IC_P001"
+  - "IC_R001"
+  - "IC_R006"
+  - "MP029"
+  - "TD_P002"
+  - "TD_R007"
+triggered_by: "Issue #403, #457"
+scope: "all shared subrepos (global_scripts, update_scripts, nsql, config, handbook)"
+---
+
+## Overview
+
+The Cross-Company Verification Principle establishes that any change to code residing in a shared git subrepo (consumed by multiple company projects) must be verified against **every** consuming company before being committed. Verification covers both applicability (the change makes semantic sense for each consumer) and absence of side effects (no regression in other companies).
+
+## Rationale
+
+### The Subrepo Silent Bug Problem
+
+The L4 Enterprise architecture (MP122) shares code across multiple company projects (currently: QEF_DESIGN, D_RACING, MAMBA, WISER, kitchenMAMA) via git subrepos. A single bug in shared code affects **all** consuming companies simultaneously, but typically surfaces in only one — the rest stay latent.
+
+### Case Study: Issue #403 / #457
+
+In 2026-04, `amz_ETL_competitor_ids_0IM.R` was found to have a positional offset bug (`brand_idx = col_idx + 4` instead of `col_idx - 1`) that silently mis-mapped the `brand` column to the *next* product line's brand in the Google Sheet. The bug surfaced in QEF_DESIGN (100% UNKNOWN in `rpl` product line because the offset exceeded the sheet width), but the same bug existed in D_RACING's ETL — where it happened to produce non-UNKNOWN values that looked plausible but were semantically wrong.
+
+Had the fix been committed after testing only QEF_DESIGN, D_RACING would have silently received the offset change. The sheet layouts happened to be isomorphic (both `[brand][ASIN][產品編碼][銷售][評論]` 5-column blocks), so the fix was safe, but this was verified by explicit cross-company check — not assumed.
+
+### Why Trigger-Company Testing Is Not Enough
+
+1. **Shared semantics ≠ identical data**: 5 companies may use the same code but pass different inputs (sheet structures, product line sets, rawdata formats)
+2. **Silent regressions**: A change that "fixes" company A may "break" company B without any error — values just become wrong
+3. **Latent bugs compound**: Each uncatched cross-company regression adds to technical debt and eventually surfaces as a customer-visible bug
+
+## Core Rule
+
+::: {.callout-important}
+## Mandatory Verification Protocol
+
+Before committing any change to a file under a shared subrepo, the author MUST:
+
+1. **Identify consumers** — enumerate every company project that references the changed file or function
+2. **Semantic review** — confirm the change makes sense for each consumer, not only the triggering company
+3. **Representative verification** — run relevant smoke test (ETL / DRV / E2E) for at least one representative company per consumption pattern
+4. **Record verification** — commit message must include a `Verified:` trailer listing companies tested and the verification method
+:::
+
+## Verification Protocol
+
+### Step 1: Identify Consumers
+
+For a changed file in a shared path:
+
+```bash
+# For a file under shared/global_scripts/ or shared/update_scripts/
+CHANGED="shared/global_scripts/foo/bar.R"
+BASENAME=$(basename "$CHANGED" .R)
+
+# Find consumers (company projects that source / reference this file)
+grep -rln "$BASENAME" \
+  {QEF_DESIGN,D_RACING,MAMBA,WISER,kitchenMAMA}/scripts/ 2>/dev/null
+
+# For a function rather than a file (R convention):
+grep -rln "my_function_name" {QEF_DESIGN,D_RACING,MAMBA,WISER,kitchenMAMA}/scripts/ 2>/dev/null
+```
+
+For a config or YAML schema change, cross-reference `app_config.yaml` entries per company.
+
+### Step 2: Semantic Review
+
+Ask per consumer:
+
+- Does this company actually use this code path? (e.g., if the change is Amazon-specific, is `amz` in `platforms:` with `status: active`?)
+- Does this company's input data match the assumptions being changed? (e.g., new required column must exist in every company's rawdata)
+- Are there company-specific overrides or `___COMPANY` suffixed variants that already bypass this code path?
+
+### Step 3: Representative Verification
+
+Pick verification granularity by risk:
+
+| Risk Level | Minimum Verification |
+|---|---|
+| Low (comment / docstring / README) | Semantic review only |
+| Medium (utility function, Shiny component) | Smoke test for 1 company per distinct consumption pattern |
+| High (ETL, DRV, schema change) | Full pipeline run + sanity check output for ≥2 companies |
+
+### Step 4: Record Verification
+
+Every commit touching shared code must include a `Verified:` trailer:
+
+```
+fix: brand_idx offset in amz_ETL_competitor_ids (#403)
+
+Verified: QEF_DESIGN (60 cols, 12 lines), D_RACING (45 cols, 9 lines)
+  - Both sheets have identical 5-col block layout
+  - Re-ran ETL against both; UNKNOWN rate dropped to 0 in both
+```
+
+## Compliance Examples
+
+### Violations
+
+| Scenario | Why It Violates |
+|---|---|
+| Commit `brand_idx` fix after testing only QEF_DESIGN, without checking D_RACING sheet | Skipped Step 1 (identify consumers) and Step 3 (representative verification) |
+| Add a utility function that assumes QEF-specific rawdata path pattern, no check of other companies | Skipped Step 2 (semantic review per consumer) |
+| Modify ETL schema adding a new required column, verify QEF rawdata has it, ignore whether other companies have it | Will cause silent fallback to NA / UNKNOWN in non-QEF companies |
+| Commit message reads only `fix: brand UNKNOWN (#403)` with no `Verified:` trailer | Skipped Step 4 (record verification); fails audit of cross-company testing |
+
+### Compliant
+
+| Scenario | Why It Complies |
+|---|---|
+| Before changing `brand_idx`, read QEF and D_RACING Google Sheets headers; confirm isomorphic block layout; then commit with `Verified: QEF_DESIGN, D_RACING` trailer | Executes all 4 steps explicitly |
+| Add new Shiny component; check `grep -rl new_component` finds only MAMBA using it; document `Verified: MAMBA (only consumer)` | Honest scope — no need to test unaffected companies |
+| ETL schema migration: run `make run PLATFORM=amz` on QEF_DESIGN and D_RACING fixtures; attach summary in commit | Representative verification with evidence |
+
+## Exceptions
+
+1. **Documentation-only changes** (`.md`, `.qmd`, comments): Semantic review only; no smoke test required
+2. **Emergency hotfix**: May commit without full verification, but:
+   - Commit message must state `Verified: pending (hotfix)` + follow-up issue number
+   - Verification must complete within the same working day, documented in a follow-up comment
+3. **Explicit out-of-scope**: If a company clearly cannot use the change (e.g., the change targets `amz` platform, and company X has no `amz` in `platforms:`), may omit that company with rationale:
+   ```
+   Verified: QEF_DESIGN, D_RACING
+   N/A: MAMBA, WISER, kitchenMAMA (no active amz platform)
+   ```
+
+## Relationship to Other Principles
+
+- **Implements** MP122 (Penta-Track Subrepo Architecture) — enforces safe sharing mandated by the architecture
+- **Extends** IC_P001 (Universal Immediate Sync) — adds pre-commit verification gate to the sync protocol
+- **Applied via** TD_R007 (E2E Testing Standard) and TD_P002 (Dual Testing Approach) — the verification method
+- **Aligned with** MP029 (No Fake Information) — do not assume applicability across companies, verify
+- **Complements** IC_R006 (Subrepo Completeness) — IC_R006 guards structural completeness; this principle guards behavioral correctness
+
+## Enforcement (Current & Future)
+
+### Phase 1 (Current)
+
+Manual checklist embedded in this principle; documented in `.claude/rules/` for agents to read per every shared-code edit.
+
+### Phase 2 (Planned)
+
+- Claude Code `PreToolUse` hook on `Edit`/`Write` targeting `shared/` paths → inject reminder with `grep -rln` consumer list
+- Pre-commit git hook on `kiki830621/ai_martech_global_scripts` and `kiki830621/ai_martech_update_scripts` — require `Verified:` trailer in commit message
+
+### Phase 3 (Long-term)
+
+CI matrix job in subrepo repositories running smoke tests across all 5 companies' fixtures; fail on regression.

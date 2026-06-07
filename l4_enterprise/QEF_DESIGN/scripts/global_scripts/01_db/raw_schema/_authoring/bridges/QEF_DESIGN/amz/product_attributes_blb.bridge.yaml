@@ -1,0 +1,438 @@
+prerawdata_source:
+  company: QEF_DESIGN
+  platform: amz
+  source_type: csv
+  source_uri: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_blb.csv
+  sheet_name: ~
+  schema_fingerprint:
+    algorithm: sha256
+    value: 82225f710f25b3b03ec4e1371381dd1e2ababc893e1a8ffcaacdc4f7a3189899
+    fingerprinted_against: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_blb.csv
+      — single file (15 rows); regenerated 2026-05-12 with normalized helper per fix-glue-layer-infra-blockers
+      (#628)
+    fingerprinted_at: '2026-05-12T01:47:45Z'
+canonical_target:
+  datatype: product_attributes_blb
+  platform: amz
+  table: df_amz_product_attributes_blb___raw
+  schema_yaml_path: 01_db/raw_schema/_authoring/companies/QEF_DESIGN/product_attribute_schemas.yaml
+  platform_extension_yaml_path: 01_db/raw_schema/_authoring/platform_extensions/amz_extensions.yaml
+field_extractors:
+  brand:
+    type: column
+    name: 品牌
+  sales_platform:
+    type: column
+    name: 銷售平台
+  sku:
+    type: column
+    name: SKU
+    value_map:
+      NA: ~
+  asin:
+    type: column
+    name: ASIN
+  product_name:
+    type: column
+    name: 商品名稱
+  rank:
+    type: column
+    name: 排名
+  is_competitor:
+    type: column
+    name: 競爭對手
+  color_lens:
+    type: column
+    name: 鏡片顏色
+  rating_no_distortion:
+    type: column
+    name: 無失真
+  rating_comfortable_wear:
+    type: column
+    name: 穿戴舒適
+  rating_durability:
+    type: column
+    name: 耐用性
+  rating_clear_vision:
+    type: column
+    name: 視野清晰
+  review_rating:
+    type: column
+    name: 評論星級
+  review_count:
+    type: column
+    name: 評論則數
+  url:
+    type: column
+    name: 網址
+    value_map:
+      NA: ~
+  is_benchmark_product:
+    type: column
+    name: 標竿產品
+  price:
+    type: column
+    name: 價格
+  quantity:
+    type: column
+    name: 數量
+  color_temple:
+    type: column
+    name: 鏡腳顏色
+  material_frame:
+    type: column
+    name: 鏡框材質
+    value_map:
+      NA: ~
+  material_nose_pad:
+    type: column
+    name: 鼻墊材質
+    value_map:
+      NA: ~
+  material_temple_tip:
+    type: column
+    name: 鏡腳末端材質
+    value_map:
+      NA: ~
+  dimension_frame_width:
+    type: column
+    name: 鏡框寬度
+    value_map:
+      NA: ~
+  dimension_frame_max_width:
+    type: column
+    name: 鏡框最大寬度
+    value_map:
+      NA: ~
+  dimension_frame_height:
+    type: column
+    name: 鏡框高度
+    value_map:
+      NA: ~
+  dimension_lens_width:
+    type: column
+    name: 鏡片寬度
+    value_map:
+      NA: ~
+  dimension_lens_height:
+    type: column
+    name: 鏡片高度
+    value_map:
+      NA: ~
+  dimension_temple_length:
+    type: column
+    name: 鏡腳長度
+    value_map:
+      NA: ~
+  dimension_bridge_width:
+    type: column
+    name: 鼻橋寬度
+    value_map:
+      NA: ~
+  dimension_product_weight:
+    type: column
+    name: 產品重量
+    value_map:
+      NA: ~
+  protection_hev_block:
+    type: column
+    name: 高能可見光阻隔技術
+    value_map:
+      NA: ~
+  protection_blue_light:
+    type: column
+    name: 藍光阻隔
+  protection_blue_light_rate:
+    type: column
+    name: 藍光阻隔率....
+    value_map:
+      '': ~
+  protection_uv420:
+    type: column
+    name: UV420.防護
+  protection_uv580:
+    type: column
+    name: UV580.防護
+  protection_uv:
+    type: column
+    name: 紫外線防護
+  protection_reduce_yellow_light:
+    type: column
+    name: 減少黃光
+  feature_reduce_glare:
+    type: column
+    name: 降低眩光
+  feature_true_color:
+    type: column
+    name: 真實色彩
+  feature_color_contrast:
+    type: column
+    name: 顏色對比
+  cleaning_method:
+    type: column
+    name: 清潔方式
+  feature_flexible_frame:
+    type: column
+    name: 彈性鏡框
+  feature_adjustable_nose_pad:
+    type: column
+    name: 可調整鼻墊
+  accessory_protective_case:
+    type: column
+    name: 保護盒
+  accessory_pouch:
+    type: column
+    name: 眼鏡袋
+  accessory_cleaning_cloth:
+    type: column
+    name: 清潔布
+  service_after_sale:
+    type: column
+    name: 售後服務
+  service_return:
+    type: column
+    name: 退貨服務
+  feature_sweat_resistant:
+    type: column
+    name: 防汗功能
+  warranty:
+    type: column
+    name: 保固
+  standard_ppe_2016_425:
+    type: column
+    name: PPE.2016.425規範
+  standard_ansi_z80_3:
+    type: column
+    name: ANSI.Z80.3標準
+  feature_patented_technology:
+    type: column
+    name: 專利技術
+  feature_anti_reflection:
+    type: column
+    name: 防反射功能
+  feature_ergonomic_design:
+    type: column
+    name: 人體工學設計
+  feature_perfect_fit:
+    type: column
+    name: 完美貼合
+  feature_impact_resistant:
+    type: column
+    name: 耐衝擊
+  feature_waterproof:
+    type: column
+    name: 防水功能
+  feature_anti_scratch:
+    type: column
+    name: 防刮功能
+  feature_anti_oxidation:
+    type: column
+    name: 抗氧化功能
+  feature_wear_resistant:
+    type: column
+    name: 耐磨損功能
+  feature_anti_slip_temple:
+    type: column
+    name: 防滑鏡腳
+  feature_aerodynamic_frame:
+    type: column
+    name: 空氣動力學鏡框
+  feature_thin_light_frame:
+    type: column
+    name: 輕薄鏡框
+  feature_spring_hinge:
+    type: column
+    name: 彈簧鉸鏈
+  feature_slim_temple:
+    type: column
+    name: 纖細鏡腳
+  feature_lightweight_design:
+    type: column
+    name: 輕巧設計
+  protection_eye_strain:
+    type: column
+    name: 避免眼睛疲勞
+  protection_eye_general:
+    type: column
+    name: 眼睛保護
+  protection_cataract_macular:
+    type: column
+    name: 預防白內障與黃斑部病變
+  protection_migraine:
+    type: column
+    name: 防偏頭痛
+  feature_long_duration_use:
+    type: column
+    name: 長時間使用
+  feature_night_use:
+    type: column
+    name: 夜間使用
+  activity_theater_fan:
+    type: column
+    name: 劇迷
+  demographic_kids:
+    type: column
+    name: 兒童
+  demographic_teen:
+    type: column
+    name: 青少年
+  activity_reading:
+    type: column
+    name: 閱讀者
+  user_student:
+    type: column
+    name: 學生
+  activity_gift:
+    type: column
+    name: 送禮
+  activity_sleeping:
+    type: column
+    name: 睡眠
+  activity_work:
+    type: column
+    name: 工作
+  scene_sunny:
+    type: column
+    name: 晴天場景
+  pkg_led_light:
+    type: column
+    name: LED.燈光
+  activity_gaming:
+    type: column
+    name: 遊戲
+  device_computer:
+    type: column
+    name: 電腦
+  device_laptop:
+    type: column
+    name: 筆電
+  device_phone:
+    type: column
+    name: 手機
+  device_tablet:
+    type: column
+    name: 平板
+  device_tv:
+    type: column
+    name: 電視
+  activity_daily:
+    type: column
+    name: 日常活動
+  scene_office:
+    type: column
+    name: 辦公室
+  style_modern:
+    type: column
+    name: 現代風格
+  style_classic:
+    type: column
+    name: 經典風格
+  style_retro:
+    type: column
+    name: 復古風格
+  activity_night:
+    type: column
+    name: 夜間活動
+unused_source_columns:
+- etl_import_timestamp
+- etl_import_source
+- etl_product_line_id
+- etl_phase
+generated_at: '2026-04-29T09:06:48Z'
+generated_by: 'gen_product_attribute_bridges.R (qef-product-master-redesign 9.6, #460)'
+reviewed_by:
+  human_reviewer: kiki830621
+  review_mode: glue-ensemble-v1
+  ai_reviewers:
+  - codex-cli@gpt-5.5-xhigh
+  - claude-opus-4-7-correctness
+  - claude-opus-4-7-security
+  - claude-opus-4-7-devils-advocate
+  findings_summary:
+    critical: 0
+    high: 0
+    medium: 5
+    low: 7
+    suggestions: 5
+    resolved_in_iterations: 2
+  approved_at: '2026-05-05T12:00:00Z'
+  approved_in_commit: ''
+  review_artifacts: product_attributes_blb.bridge.review.md
+findings_resolutions:
+- finding_id: M-1
+  severity: MEDIUM
+  description: reviewed_by remains a placeholder and still blocks final bridge consumption
+  resolution: fixed inline this commit — placeholder replaced with structured form
+    per MP102 v1.3
+  accepted_by: kiki830621
+- finding_id: M-3
+  severity: MEDIUM
+  description: Bridge file lacks structured reviewed_by block (still placeholder)
+  resolution: fixed inline this commit — see structured block above
+  accepted_by: kiki830621
+- finding_id: M-8
+  severity: MEDIUM
+  description: build_value_map_for_col() keys emitted to yaml without explicit sanitization
+    (security)
+  resolution: 'accepted — keys come from controlled product_profile Gsheet maintained
+    by business team; no untrusted user input path. Tracked as out-of-scope for #502
+    follow-up scope 4 (cryptographic binding).'
+  accepted_by: kiki830621
+- finding_id: M-11
+  severity: MEDIUM
+  description: Unit tests cover helpers in isolation but provide ZERO integration
+    coverage (devils-advocate)
+  resolution: 'accepted — generator end-to-end test deferred to separate hardening
+    spectra change. Bridge ship-readiness gate is satisfied via 4-AI ensemble + standalone
+    validator + #502 codegen coverage.'
+  accepted_by: kiki830621
+- finding_id: M-14
+  severity: MEDIUM
+  description: Committed bridge yaml ships with reviewed_by REQUIRES_HUMAN_REVIEW
+    (devils-advocate)
+  resolution: fixed inline this commit — same as M-1/M-3.
+  accepted_by: kiki830621
+- finding_id: L-2
+  severity: LOW
+  description: Schema notes for warranty / cleaning_method claim 'some products have
+    boolean values'
+  resolution: 'accepted — notes describe Layer 1 BOOLEAN type per #502 Gap A fix (CLOSED).
+    Cosmetic wording only.'
+  accepted_by: kiki830621
+- finding_id: L-4
+  severity: LOW
+  description: Bridge file leading comment line 13-14 still says reviewed_by placeholder
+  resolution: accepted — comment is cosmetic; yaml runtime field is now structured.
+  accepted_by: kiki830621
+- finding_id: L-7
+  severity: LOW
+  description: Two-pass CSV read doubles attack surface for malicious source
+  resolution: accepted — source CSV is generated from internal Gsheet under business
+    control; no external attacker access path.
+  accepted_by: kiki830621
+- finding_id: L-10
+  severity: LOW
+  description: Two-pass read with colClasses character does not open new injection
+    surface (security)
+  resolution: accepted — finding is informational confirmation; no action.
+  accepted_by: kiki830621
+- finding_id: L-12
+  severity: LOW
+  description: Whitespace handling asymmetric between value_map keys and runtime trim
+    contracts
+  resolution: accepted — runtime trims after lookup; ensures consistent matching.
+    Cosmetic asymmetry, not a defect.
+  accepted_by: kiki830621
+- finding_id: L-13
+  severity: LOW
+  description: Lowercase na/n/a deliberately excluded but no validation
+  resolution: accepted — case-sensitivity choice documented in this resolution. Out-of-scope
+    for product_attributes_blb.
+  accepted_by: kiki830621
+- finding_id: L-15
+  severity: LOW
+  description: No idempotence test — running gen_product_attribute_bridges twice produces
+    different timestamps
+  resolution: accepted — wall-clock timestamps in generated_at/fingerprinted_at are
+    intentional provenance markers. Tracked as out-of-scope hardening item.
+  accepted_by: kiki830621

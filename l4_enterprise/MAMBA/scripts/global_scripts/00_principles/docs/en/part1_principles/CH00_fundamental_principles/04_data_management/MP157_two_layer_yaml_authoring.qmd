@@ -1,0 +1,222 @@
+---
+id: "MP157"
+title: "Two-Layer YAML Authoring (Canonical Schema + Per-Instance Bridge)"
+type: "meta-principle"
+category: "data_management"
+date_created: "2026-04-28"
+date_modified: "2026-04-28"
+author: "Claude (spectra change qef-product-master-redesign Phase 9 ingest, post-#489 architectural rethink)"
+status: "active"
+version: "1.0"
+weight: 157
+related_to:
+  - "MP102": "ETL Output Standardization Principle (defines canonical schema layer)"
+  - "MP156": "Two-Tier Normativity (binding mechanism for both yaml layers)"
+  - "MP155": "Minimize Human Input (per-instance bridges keep input surface minimal)"
+  - "MP154": "Side Effect Defense (sentinel-aware bridge fallback)"
+  - "MP064": "ETL-Derivation Separation"
+  - "DM_R064": "Column Name Access (no positional inference in either yaml layer)"
+implements:
+  - "AUTHORING": "Two-layer yaml authoring discipline"
+  - "SEPARATION": "Universal contract vs per-instance translation"
+---
+
+# MP157: Two-Layer YAML Authoring Principle
+
+## Core Statement
+
+**Schema authoring SHALL be split into two yaml layers with non-overlapping ownership**: a canonical schema yaml layer expressing the universal contract, and a per-instance bridge yaml layer expressing how each company's prerawdata source satisfies that contract. **Neither layer SHALL absorb the other's responsibilities.**
+
+Layer 1 — `01_db/raw_schema/_authoring/core_schemas.yaml` + `platform_extensions/*.yaml` — owns the universal contract.
+Layer 2 — `01_db/raw_schema/_authoring/bridges/{COMPANY}/{platform}/{source}.bridge.yaml` — owns per-instance translation.
+
+## Architectural Definition
+
+### Layer 1: Canonical Schema (universal contract)
+
+Answers the question: **"What should `df_{platform}_{datatype}___raw` look like?"**
+
+| Owns | Reason |
+|---|---|
+| Required field set per datatype | Universal across all 5 consuming companies |
+| Field types (`VARCHAR` / `INTEGER` / `NUMERIC` / `BOOLEAN` / `TIMESTAMP`) | DDL codegen target |
+| Field-level `pattern:` constraints (e.g., `^B0[A-Z0-9]{8}$` for ASIN) | DDL CHECK constraint source |
+| Field `aliases:` (synonyms in column names) | Bridge-mapping hint, cross-company shared |
+| Sentinel values for `fallback:` (e.g., `UNKNOWN_PRODUCT`, `1970-01-01`) | MP154 compliance, universal |
+| Coercion rules per field | Type normalization, universal |
+| Universal validation rules (e.g., `platform_id` = 3 lowercase letters) | Cross-company invariant |
+
+Bound by **MP102** as MP156 Category A — Schema Contract.
+
+### Layer 2: Bridge Yaml (per-instance translation)
+
+Answers the question: **"How does THIS company's THIS source satisfy the canonical contract?"**
+
+| Owns | Reason |
+|---|---|
+| `prerawdata_source.{company, platform, source_type, source_uri, sheet_name}` | Per-instance metadata, no place in universal contract |
+| `column_mapping.{from_column}` per canonical field | Maps THIS source's column names to canonical fields |
+| `value_map:` per field | **Translates VALUES, not just names** — e.g., source value `"Amazon"` → canonical `"AFN"`. `aliases:` in schema only handles column names |
+| `use_value:` per field | Per-company hardcoded constants (e.g., QEF marketplace = `"ATVPDKIKX0DER"` because QEF only sells US) |
+| `pre_filter:` (exclude rows by source value) | Per-source data-quality filter (e.g., cancelled orders for QEF amz sales) |
+| `prerawdata_source.schema_fingerprint` | Drift-detection hash, per-source unique |
+| `reviewed_by:` | Per-instance reviewer accountability (rejected if `"AI"` / `"REQUIRES_HUMAN_REVIEW"`) |
+| `ignored_columns:` list | Per-source documentation of columns intentionally not mapped |
+
+Bound by **MP102** as MP156 Category A — Schema Contract (the bridge yaml itself becomes Tier-2 spec at commit time).
+
+## Why Two Layers — The Six Real Reasons
+
+The two-layer separation is sometimes mis-justified as "needed because companies use different column names" — but that argument is weak: schema's `aliases:` already handles column-name variation. The **actual** reasons two layers are mandatory:
+
+1. **Source identity has no home in universal contract** — `company` / `platform` / `source_uri` / `sheet_name` are per-instance facts. Putting them in a universal schema yaml violates the schema's universal nature.
+
+2. **Value translation ≠ name translation** — `aliases:` in schema yaml maps **column names**. But Amazon's All Orders Report uses `"Amazon"` / `"Merchant"` for fulfillment-channel while canonical SP-API uses `"AFN"` / `"MFN"`. Translating VALUES requires `value_map:` which is per-instance.
+
+3. **Per-company constants belong with per-company config** — `amz_marketplace_id = "ATVPDKIKX0DER"` is a fact about QEF, not about Amazon-as-a-platform. Other companies on amz might be multi-marketplace. Schema yaml cannot conditionally hold company-specific defaults without breaking universality.
+
+4. **Pre-mapping data filter is per-source** — QEF's cancelled-order exclusion is a property of QEF's prerawdata structure, not a property of the canonical sales schema. Different companies, different filter rules.
+
+5. **Drift fingerprint is per-source** — sha256 of column-set + types is an attribute of one specific data feed, not of an abstract contract.
+
+6. **Reviewer accountability differs** — schema changes require MP102 Change Discipline (DOC_R009 triple-layer sync + IC_P002 cross-company verify). Bridge changes require a real human `reviewed_by` field. Two distinct accountability surfaces.
+
+## DDL Codegen Invariant
+
+The two-layer split has a load-bearing operational consequence: **only Layer 1 participates in DDL codegen**.
+
+```
+Layer 1 (canonical schema yaml)  ──→  _build.R  ──→  _generated/*.sql
+                                                       (DuckDB CREATE TABLE,
+                                                        committed, used by
+                                                        all 5 consuming companies)
+
+Layer 2 (bridge yaml)            ──→  fn_glue_bridge.R (R interpreter)
+                                                       (NOT a DDL input;
+                                                        consumed at runtime
+                                                        to map prerawdata
+                                                        into canonical raw)
+```
+
+Bridge yamls **MUST NOT** contain content that would be needed to generate DDL. If a bridge yaml carries a "field that should be in the table", the field belongs in Layer 1, not in the bridge. This invariant is what keeps the codegen reproducible (MP102 Change Discipline #3 — byte-identical re-run against unchanged Layer 1).
+
+## LLM Consumption Pattern
+
+The two-layer split has explicit affordances for LLM consumption:
+
+| LLM task | Read which layer | Why |
+|---|---|---|
+| Generate a new bridge yaml for a new company-source | Layer 1 (canonical) + the prerawdata source's column list | Bounded context — one source's vocabulary, one canonical target |
+| Answer "how does QEF map ASIN" | Layer 2 (QEF's bridge) | Direct, single file lookup |
+| Answer "what is the canonical ASIN format" | Layer 1 (`core_schemas.yaml#products.product_id.pattern`) | Universal contract |
+| Plan a schema change | Layer 1 + grep all Layer 2 bridges for impact | Schema change affects all bridges; bridge change is local |
+| Onboard a new company | Layer 1 first (understand contract) → Layer 2 example (Phase 5 PoC) → write own bridge | Progressive context build-up |
+
+The split is empirically beneficial for per-task LLM work (bounded context per file). It is mildly worse for first-time architectural understanding — mitigated by this principle plus `shared/handbook/onboarding/glue-bridge-onboarding.md`.
+
+## Relationship to MP102 + MP156
+
+MP157 is a **structural amendment** to how MP102's Tier-2 spec files are organized:
+
+- Before #489: MP102 implicitly assumed a single yaml layer (`core_schemas.yaml` + `platform_extensions`). All cross-source variation was assumed to be solved by `aliases:` + ETL-side adapter scripts.
+- After #489 + this principle: MP102's bound files split into two roles — Layer 1 (universal) and Layer 2 (per-instance). Both are MP156 Category A — Schema Contract under MP102 binding.
+
+MP157 does NOT introduce a new binding category; it **clarifies the structure of MP102's existing Category A bindings**.
+
+## Anti-Patterns
+
+These violations are the most common ways the two-layer separation breaks:
+
+### A-1: Single-yaml absorbing everything
+
+```yaml
+# ❌ ANTI-PATTERN
+# core_schemas.yaml
+sales:
+  required_fields:
+    customer_id:
+      qef_value_when_missing: "UNKNOWN_QEF"
+      mamba_value_when_missing: "UNKNOWN_MAMBA"
+      ...
+```
+
+Problem: per-company conditionals in universal schema. DDL codegen can't produce one CHECK constraint that varies by company.
+
+**Fix**: move the per-company defaults to bridge yaml `use_value:` or `fallback:`.
+
+### A-2: Bridge redefining canonical fields
+
+```yaml
+# ❌ ANTI-PATTERN
+# bridges/QEF_DESIGN/amz/sales.bridge.yaml
+canonical_target:
+  redefine_fields:
+    customer_id:
+      type: INTEGER  # Schema says VARCHAR; bridge tries to override
+```
+
+Problem: bridge claiming authority over canonical contract.
+
+**Fix**: bridge yaml MAY only `column_mapping` / `coercion` / `value_map` / `use_value` / `pre_filter` / `apply_fallback`; it MUST NOT redefine field type, required-status, or pattern. Type / required / pattern are Layer 1 concerns.
+
+### A-3: Schema with per-instance metadata
+
+```yaml
+# ❌ ANTI-PATTERN
+# core_schemas.yaml
+sales:
+  source_uri_qef: "https://docs.google.com/..."  # per-co URL in universal yaml
+  source_uri_mamba: "..."
+```
+
+Problem: universal contract polluted with per-company URLs. New company onboarding requires editing the universal yaml.
+
+**Fix**: source URIs go in the company's bridge yaml `prerawdata_source.source_uri`.
+
+### A-4: Bridge introducing new canonical fields
+
+```yaml
+# ❌ ANTI-PATTERN
+# bridges/QEF_DESIGN/amz/sales.bridge.yaml
+column_mapping:
+  qef_special_field:           # field not in canonical schema
+    from_column: "Special Field"
+```
+
+Problem: bridge inventing a canonical field that the DDL doesn't include — INSERT will fail at engine level.
+
+**Fix**: if the field is genuinely needed cross-company, propose adding it to Layer 1 (with cross-company verification). If it's QEF-only, it goes in `amz_extensions.yaml` `sales:` section under `qef_*` prefix? **No** — extensions are per-platform, not per-company. The right answer: this row stays in `ignored_columns:` of the bridge yaml; if downstream needs it, materialize via DRV layer query against prerawdata directly.
+
+### A-5: Skipping bridge yaml because "we only have one company"
+
+Problem: hardcoding mapping in R/SQL assuming single-company stays single-company. When the second company arrives, the integration code must be rewritten from scratch.
+
+**Fix**: even for the first company, write a bridge yaml. The infrastructure cost is low (PoC pattern documented in `glue-bridge-onboarding.md`); the architectural payoff at company N=2 is large.
+
+## Compliance Requirements
+
+When authoring or reviewing schema-related yaml files:
+
+1. **Layer 1 yaml** SHALL contain only universal-contract content. Per-instance metadata, value maps, hardcoded constants, pre_filters, fingerprints — all rejected at review.
+2. **Layer 2 yaml** SHALL declare its `prerawdata_source` (company / platform / source_type) + `canonical_target` (datatype / table) + at minimum one of `column_mapping` / `apply_fallback` / `use_value` for each required canonical field.
+3. **Bridge yaml MUST NOT redefine canonical types, patterns, or required-status.** These are Layer 1 concerns.
+4. **DDL codegen `_build.R`** SHALL read only Layer 1 yamls. If `_build.R` ever has reason to peek at bridge yamls, the principle is being violated.
+5. **`reviewed_by` discipline**: Layer 1 changes follow MP102 Change Discipline (DOC_R009 + IC_P002); Layer 2 changes require a real human identifier in `reviewed_by:` (rejected if blank, `"AI"`, `"REQUIRES_HUMAN_REVIEW"`).
+6. **New canonical field** that any bridge wants to map: propose to Layer 1 with cross-company verification, do NOT smuggle it via bridge `column_mapping`.
+
+## Relationship to Other Principles
+
+- **MP102** (ETL Output Standardization): both layers' yamls are MP102's bound Tier-2 specs. MP157 explains how those bound files are structured.
+- **MP156** (Two-Tier Normativity): the binding mechanism that pins both yaml layers as Category A.
+- **MP155** (Minimize Human Input): bridge yaml's `column_mapping` is the input-surface declaration per MP155 4-question framework (input vs view vs action vs derived).
+- **MP154** (Side Effect Defense): bridge `value_map` + schema `fallback` together produce sentinel-safe outcomes; never silent NA.
+- **DM_R064** (Column Name Access): both layers reference columns by name + alias, never by positional index.
+- **DOC_R009** (Triple-Layer Sync): applies to MP157 itself (this principle ships across .qmd + llm/yaml + .claude/rules).
+- **MP160** (AI Schema/Bridge Authoring Completeness): companion principle. MP157 defines the Layer 1 / Layer 2 boundary; MP160 ensures both layers are populated in full at authoring time, not partially scaffolded. The combined effect: each layer contains exactly the facts it owns, and contains them all.
+- **MP161** (Company-Scoped Schema Recognition): refines MP157's Layer 1 by splitting into universal-Layer-1 (lives at `_authoring/{core_schemas,platform_extensions}/`) and company-scoped-Layer-1 (lives at `_authoring/companies/{COMPANY}/`). MP157 establishes the layer concept; MP161 establishes the scope-based subdivision within Layer 1.
+
+## Conclusion
+
+The two-layer yaml authoring pattern is the practical realization of MP102 + MP156 in a multi-company codebase. Layer 1 expresses the contract; Layer 2 expresses how the contract is satisfied per instance. The split is not motivated by surface-level naming differences (which `aliases:` handles cheaply) but by the structural requirement to keep universal contracts, per-instance facts, value translations, hardcoded constants, drift fingerprints, and reviewer accountability in their proper homes.
+
+When in doubt about which layer a piece of information belongs to, ask: **"Would this fact change if I substituted any of the 5 consuming companies?"** If yes — Layer 2 (bridge). If no — Layer 1 (schema).

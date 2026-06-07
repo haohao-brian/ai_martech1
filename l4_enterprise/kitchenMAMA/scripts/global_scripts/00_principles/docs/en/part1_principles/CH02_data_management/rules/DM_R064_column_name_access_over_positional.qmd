@@ -1,0 +1,158 @@
+---
+id: DM_R064
+title: Column-Name Access Over Positional Access
+subtitle: 讀取 tabular 資料(sheets, CSV, DataFrames, SQL)必須用 header/欄位名,不可用 positional index
+type: Rule
+category: Data Management
+status: active
+related:
+  - DM_R023   # Universal DBI Approach (tbl2 over raw SQL — same philosophy)
+  - DM_R028   # ETL Data Type Separation
+  - IC_P002   # Cross-Company Verification
+  - MP029     # No Fake Information (don't assume column positions)
+  - MP154     # Side Effect Defense
+version: 1.0.0
+date-created: "2026-04-24"
+author: Claude
+law: Data Management
+article-number: Rule 64
+parent_principle: MP064
+triggered_by: "Issue #403, #457"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+---
+
+# DM_R064: Column-Name Access Over Positional Access {#overview}
+
+## Rule
+
+::: {.callout-important}
+## Core Rule
+
+When reading tabular data (Google Sheets, Excel, CSV, DataFrames, SQL results), columns **MUST** be accessed by **header name**, never by **positional index**. Positional arithmetic (`col_idx + N`, `df[[4]]`, `SELECT column_4`) creates silent bugs when column order shifts.
+:::
+
+## Motivation
+
+### Case Study: Issue #403
+
+`amz_ETL_competitor_ids_0IM.R` parsed a Google Sheet where each product line occupied 5 consecutive columns. The ETL hard-coded positional offsets:
+
+```r
+asin_idx   <- col_idx         # ASIN header matched
+sales_idx  <- col_idx + 1     # 假設 [ASIN][sales][review][?][brand]
+review_idx <- col_idx + 2
+brand_idx  <- col_idx + 4     # ❌ 實際 block layout 是 [品牌][ASIN][產品編碼][銷售][評論]
+                              #    → 抓到「下一個」product line 的 brand,或超出 sheet 範圍
+```
+
+**Result**:
+- `rpl` (last product line) → `col_idx + 4 = 61 > 60 cols` → 100% UNKNOWN
+- Other product lines → silent mis-mapping (brand belongs to *neighboring* product line, looks plausible but is semantically wrong)
+- Bug existed identically in 5 shared-subrepo consumers (QEF_DESIGN, D_RACING, MAMBA, WISER, kitchenMAMA)
+
+### Why Positional Access Breaks Silently
+
+1. **Client-controlled layout**: Sheets / CSV are often maintained by non-engineers who may reorder columns
+2. **Schema evolution**: Adding a new column shifts all subsequent positions
+3. **No type check**: Positional index `df[[4]]` will return *something* from any frame with ≥4 columns, even if it's the wrong column
+4. **Gap between consumers**: Same ETL code, different sheet layouts per company → different positional bugs
+
+## Prohibited Patterns
+
+| Pattern | Why Prohibited | Correct Alternative |
+|---|---|---|
+| `df[[4]]` (integer index) | Position assumption; silent fail on schema change | `df[["brand"]]` or `df$brand` |
+| `col_idx + N` arithmetic | Offset assumption; breaks on block layout changes | `which(names(df) == "brand")` or header match |
+| `SELECT column_4 FROM tbl` | No column alias; meaning lost | `SELECT brand FROM tbl` |
+| `block[, 3]` on matrix-style slicing of data | Ignores semantic column identity | Build named data.frame first |
+| `pivot_longer(cols = c(4, 5, 6))` | Positional cols spec | `pivot_longer(cols = c("Q1", "Q2", "Q3"))` |
+
+## Compliant Patterns
+
+### Pattern 1: Direct named access
+
+```r
+# 好
+brand <- df$brand
+asin <- df[["asin"]]
+
+# SQL
+tbl2(con, "df_competitors") %>%
+  select(product_line_id, asin, brand) %>%
+  collect()
+```
+
+### Pattern 2: Resolve positional to named once, then query by name
+
+```r
+# 好:resolve header positions at parse time
+header_cols <- list(
+  brand = which(grepl("品牌", names(sheet))),
+  asin  = which(names(sheet) %in% active_product_line_headers),
+  sales = which(grepl("銷售數據", names(sheet)))
+)
+# Build named data.frame by pulling from resolved positions
+named_df <- data.frame(
+  product_line_id = current_line_id,
+  asin   = sheet[[header_cols$asin[i]]],
+  brand  = sheet[[header_cols$brand[i]]],
+  sales  = sheet[[header_cols$sales[i]]]
+)
+```
+
+### Pattern 3: row_bind blocks then query by name (user-suggested pattern for #403)
+
+```r
+# 好:loop per product line, extract 5 named columns per block, bind rows
+block_list <- list()
+for (line_id in active_lines) {
+  block <- extract_block(sheet, line_id)  # returns data.frame with named cols
+  block_list[[line_id]] <- block
+}
+
+all_competitors <- dplyr::bind_rows(block_list)
+# Now downstream can use all_competitors$brand, no positional concern
+```
+
+## Exceptions
+
+### When positional is unavoidable
+
+1. **Data genuinely lacks headers**: raw matrix, correlation matrix, image pixel array
+2. **Matrix transposition / reshape**: operations that treat rows/cols symmetrically
+3. **Positional is the semantic**: e.g., "the 3rd row of ordered rankings" where row order *is* the meaning
+
+### When positional is allowed as intermediate
+
+Resolving header names to positions *once* (e.g., at parse time) and then storing the resolved column name is compliant. The prohibition targets **persistent positional access during data flow**, not one-time lookup at the boundary.
+
+```r
+# 可以:resolve position once to find column, then use by name
+brand_col_name <- names(sheet)[ which(grepl("^品牌", names(sheet)))[1] ]
+# 之後一律用 brand_col_name(字串),不用原本 index
+df$brand <- sheet[[brand_col_name]]
+```
+
+## Enforcement
+
+### Current (manual)
+
+- Code review must flag positional access of tabular data
+- ETL scripts must pass `grep -E "col_idx\s*[+-]|df\[\[[0-9]+\]\]"` self-check before commit
+
+### Planned
+
+- Pre-commit hook on ETL / DRV paths scanning for prohibited patterns (warning, not block, to allow exceptions)
+- Rewrite existing positional ETL scripts as per `#457` follow-up
+
+## Relationship to Other Principles
+
+- **Implements** `MP064` (ETL-Derivation Separation) — ETL must produce semantically named data
+- **Aligned with** `DM_R023` (Universal DBI Approach) — `tbl2` + dplyr verbs use named columns; same philosophy applied to non-DB tabular reads
+- **Reinforces** `MP029` (No Fake Information) — positional access assumes schema; named access verifies it
+- **Complements** `MP154` (Side Effect Defense) — sentinel `"UNKNOWN"` is downstream guard, named access is upstream prevention
+- **Triggered compliance case**: `IC_P002` (Cross-Company Verification) — #403 fix is the first commit applying both DM_R064 and IC_P002

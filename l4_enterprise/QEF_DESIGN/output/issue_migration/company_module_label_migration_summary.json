@@ -1,0 +1,85 @@
+{
+  "label_migration_summary": [
+    {
+      "from": "project:mamba",
+      "to": "company:MAMBA",
+      "changed": 97
+    },
+    {
+      "from": "project:qef_design",
+      "to": "company:QEF_DESIGN",
+      "changed": 6
+    },
+    {
+      "from": "project:kitchenmama",
+      "to": "company:KITCHENMAMA",
+      "changed": 1
+    },
+    {
+      "from": "project:shared",
+      "to": "company:SHARED",
+      "changed": 5
+    },
+    {
+      "from": "project:unknown",
+      "to": "company:UNKNOWN",
+      "changed": 32
+    },
+    {
+      "from": "project:sandbox-vitalsigns-insightforge-brandedge",
+      "to": "company:SANDBOX_VITALSIGNS_INSIGHTFORGE_BRANDEDGE",
+      "changed": 1
+    },
+    {
+      "from": "module:brandedge",
+      "to": "module:BrandEdge",
+      "changed": 9
+    }
+  ],
+  "old_label_remaining": {
+    "project:mamba": 0,
+    "project:qef_design": 0,
+    "project:kitchenmama": 0,
+    "project:shared": 0,
+    "project:unknown": 0,
+    "project:sandbox-vitalsigns-insightforge-brandedge": 0,
+    "module:brandedge": 0
+  },
+  "deleted_old_labels": [
+    "project:mamba",
+    "project:qef_design",
+    "project:kitchenmama",
+    "project:shared",
+    "project:unknown",
+    "project:sandbox-vitalsigns-insightforge-brandedge",
+    "module:brandedge"
+  ],
+  "new_label_counts": {
+    "company:MAMBA": 97,
+    "company:QEF_DESIGN": 6,
+    "company:KITCHENMAMA": 1,
+    "company:SHARED": 5,
+    "company:UNKNOWN": 32,
+    "company:SANDBOX_VITALSIGNS_INSIGHTFORGE_BRANDEDGE": 1,
+    "module:BrandEdge": 9
+  },
+  "project_titles": {
+    "6": "company:MAMBA",
+    "7": "module:BrandEdge",
+    "8": "company:KITCHENMAMA",
+    "9": "company:QEF_DESIGN",
+    "10": "company:SHARED",
+    "11": "company:UNKNOWN",
+    "12": "company:SANDBOX_VITALSIGNS_INSIGHTFORGE_BRANDEDGE"
+  },
+  "project_item_counts": {
+    "6": 97,
+    "7": 9,
+    "8": 1,
+    "9": 6,
+    "10": 5,
+    "11": 32,
+    "12": 1
+  },
+  "post_fix_note": "module:BrandEdge labels were re-applied to the 9 module board issues after migration."
+}

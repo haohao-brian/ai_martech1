@@ -1,0 +1,340 @@
+---
+title: "IC_R010: Issue Source Confidence Triage Rule"
+subtitle: "Route issues to milestone vs project based on source-confidence × team-commitment 3D taxonomy"
+chapter: "CH06"
+category: "rule"
+number: "IC_R010"
+date-created: "2026-05-02"
+date-modified: "2026-05-02"
+author: "Claude (spectra change issue-source-confidence-triage, GitHub issue #509)"
+type: "rule"
+law: "Integration & Collaboration Law Implementation Rules"
+article-number: "Article 10"
+parent_principle: "IC_R009"
+related_to:
+  - "IC_R007": "GitHub Issue Attachments — sister: same axis (issue lifecycle discipline)"
+  - "IC_R008": "GitHub Issue Scope Governance — sister: per-company / per-module label taxonomy; IC_R010 adds confidence × schedule axes orthogonal to scope"
+  - "IC_R009": "Bidirectional Commit-Issue Traceability — sister: closure discipline; IC_R010 governs routing pre-closure"
+  - "MP155": "Minimize Human Input — sibling: heuristic mechanizes the first-pass classification, user override always wins"
+  - "DOC_R009": "Triple-Layer Sync — this rule itself follows DOC_R009"
+binds:
+  - "shared/global_scripts/00_principles/docs/en/part1_principles/CH06_integration_collaboration/rules/IC_R010_issue_source_confidence_triage.qmd"
+  - "shared/global_scripts/00_principles/llm/CH06_ic.yaml"
+  - "shared/global_scripts/00_principles/.claude/rules/01-always.md"
+  - "shared/global_scripts/00_principles/.claude/rules/12-issue-routing.md"
+  - "GitHub artifacts (repo-level): confidence:* labels, Future Planning milestone, Marketing Theory Lab project"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+---
+
+# IC_R010: Issue Source Confidence Triage Rule {#overview}
+
+## Core Statement
+
+Every GitHub issue created in `kiki830621/ai_martech_global_scripts` (and consuming repos adopting this taxonomy) SHALL be tagged with exactly one `confidence:*` label drawn from `confidence:confirmed` / `confidence:vague` / `confidence:exploratory`. Routing to milestone vs project SHALL follow a 3D taxonomy (Type × Confidence × Schedule) where Confidence and Schedule are orthogonal axes governing destinations independent of Type.
+
+The three axes are:
+
+- **Type** (existing): `bug` / `enhancement` / `refactor` / `documentation` — what kind of work
+- **Confidence** (new): `confidence:confirmed` / `confidence:vague` / `confidence:exploratory` — how well understood
+- **Schedule** (new, expressed via milestone presence): active sprint milestone / `Future Planning` milestone / no milestone — when / if work happens
+
+## Why This Rule Exists
+
+This rule was triggered by GitHub issue #509 (2026-05-02). The `向創建議_20260411` milestone, generated from a customer suggestion document, mixed two fundamentally different types of work in the same container:
+
+- **Customer-reflected** P1 issues with screenshots, missing-data complaints, error reports (#412, #401)
+- **Academic theory expansions** referencing Keller / Holt / Kapferer / Sinek / Ansoff with full prompt templates (#406, #407, #409, #410, #411, #419) — non-customer voice, 老師 internal exploration
+
+Engineers diagnosing the latter spent 2-5 hours designing implementation before discovering the work was exploratory rather than committed. Customers viewing milestone progress could not distinguish "client-reported issues resolved" from "internal research expansion shipped." Closure semantics were ambiguous: customer satisfaction vs internal team decision are different completion criteria.
+
+IC_R010 establishes Confidence and Schedule as first-class taxonomy axes orthogonal to existing Type / Priority / Company / Module / Source labels. Routing rules become mechanical and auditable: confidence determines which container family (milestone vs project), and schedule determines commitment level within that family.
+
+## 3D Taxonomy
+
+### Axis 1 — Type (existing GitHub conventional labels)
+
+`bug` / `enhancement` / `refactor` / `documentation`
+
+Determines implementation owner and naming convention. Does NOT affect milestone-vs-project routing.
+
+### Axis 2 — Confidence (new `confidence:*` label family)
+
+| Label | Semantic | Source signal |
+|---|---|---|
+| `confidence:confirmed` | Stakeholder-facing reflection with verifiable evidence | Customer screenshots / error messages / missing-data complaints / explicit "I want feature X" |
+| `confidence:vague` | Source mentions issue but specific form ambiguous | "客戶想要更好的 X" without concrete form / "感覺哪裡怪怪" without repro |
+| `confidence:exploratory` | Internal exploration / brainstorm / theoretical | Specific scholar names / structured prompt templates / algorithm references / non-customer voice |
+
+Confidence labels SHALL coexist additively with all other label families. A single issue MAY carry `bug + priority:P1 + company:QEF_DESIGN + module:VitalSigns + source:suggestion_docs + confidence:confirmed` simultaneously.
+
+### Axis 3 — Schedule (expressed via milestone presence)
+
+| Schedule state | Milestone | Meaning |
+|---|---|---|
+| Active sprint | source-doc milestone (e.g., `向創建議_20260411`) | Doing this in current sprint cycle |
+| Committed-future | `Future Planning` (single repo-wide, no due date) | Will do eventually, no schedule yet |
+| Considering | (no milestone) | Just exploring, no commitment |
+
+`Future Planning` is a single repo-wide singleton milestone with no due date. Lab projects (e.g., `Marketing Theory Lab`) hold issues in any schedule state via column placement.
+
+## Routing Rules (5-destination)
+
+```
+
+   confidence:confirmed
+   ────────────────────
+   → source-doc milestone (active sprint)
+   + applicable Company project
+   + applicable Module project
+   Close criteria: customer satisfaction verified
+
+   confidence:vague
+   ────────────────────
+   → source-doc milestone (with needs:scope-clarification)
+   + applicable Company project
+   Close criteria: scope clarified, then upgrade or downgrade
+
+   confidence:exploratory + considering
+   ────────────────────
+   → Lab project, "Considering" column ONLY
+   (no milestone)
+   Close criteria: drop / upgrade to vague
+
+   confidence:exploratory + committed-future
+   ────────────────────
+   → Lab project, "Future Planning" column
+   + Future Planning milestone
+   Close criteria: team decides to ship or drop
+```
+
+## Lifecycle State Machine
+
+```
+[New issue]
+   │
+   ├─ confidence:exploratory + Lab only ──┬─ [team commits eventually]──→ + Future Planning milestone
+   │  ("considering")                      │                              ("queued")
+   │                                       │
+   │                                       └─ [drop / wontfix]──→ close
+   │
+   ├─ confidence:vague + source-doc milestone ──┬─ [clarify with stakeholder]──→ confidence:confirmed
+   │  ("needs clarify")                          │
+   │                                             └─ [downgrade after review]──→ confidence:exploratory
+   │
+   └─ confidence:confirmed + source-doc milestone ──→ close
+      ("scheduled")        [customer satisfaction / verify pass]
+```
+
+Each transition SHALL correspond to concrete `gh issue edit` operations: label change + milestone change + project column change. Implementations SHALL NOT introduce transitions outside this state machine without amending IC_R010.
+
+## Lab Project Standard Structure
+
+Lab projects (GitHub Projects v2 with names matching `* Lab` pattern) SHALL contain exactly four columns named:
+
+```
+Considering | Future Planning | In Progress | Done
+```
+
+Column-to-schedule mapping:
+
+- `Considering` — issue has no milestone (only in this Lab project)
+- `Future Planning` — issue is in `Future Planning` repo milestone
+- `In Progress` — issue is in active sprint milestone
+- `Done` — issue is closed
+
+Movement between columns SHALL be triggered by milestone changes. Manual column drag-and-drop is allowed during transitions but SHALL be reconciled with milestone state at next `idd-diagnose` invocation.
+
+## Plugin Skill Integration
+
+Two skills in the `issue-driven-dev` plugin SHALL implement IC_R010:
+
+### `idd-issue` Step 4.4 — Source Confidence Triage
+
+**Position**: Inserted between Step 4 (attachments) and Step 4.5 (auto-create milestone).
+
+**Predicate** (default-on conditions):
+- Source is a document file (`.docx` / `.pdf` / `.md` / similar)
+- Invocation has created two or more issues
+
+**Behavior** when predicate matches:
+1. Scan each newly-created issue body using keyword regex heuristic
+2. Suggest confidence level based on signal matches
+3. Use AskUserQuestion to confirm or override
+4. Apply chosen label + route to appropriate milestone / project
+
+When predicate does not match: silent-skip (no prompt, no output).
+
+### `idd-diagnose` Step 3.4 — Re-evaluate Source Confidence
+
+**Position**: Inserted between Step 3 (diagnose) and Step 3.5 (Complexity Assessment).
+
+**Predicate**:
+- Issue already carries a `confidence:*` label
+
+**Behavior** when predicate matches:
+1. Re-scan issue body and current diagnosis content
+2. Compare re-evaluated confidence to current label
+3. If mismatched, AskUserQuestion: "Keep current" / "Upgrade" / "Downgrade"
+4. Apply user's choice via `gh issue edit` and re-route per routing rules
+
+When predicate does not match: silent-skip.
+
+## Heuristic Patterns
+
+The keyword regex heuristic referenced by both plugin steps SHALL be documented in the plugin source repo's `references/issue-source-confidence-heuristics.md`. Pattern set MUST include:
+
+**Exploratory signals** (any match suggests `exploratory`):
+
+- Specific scholar full names: `Keller` / `Holt` / `Kapferer` / `Sinek` / `Ansoff` / `Drucker` / `Porter`
+- Structured prompt template language: `prompt:` / `Stage 1` / `Stage 2` / `步驟一` / `步驟二`
+- Algorithm references: `K-means` / `chi-square` / `卡方檢定` / `Cox PH` / `logistic regression`
+- Non-customer voice: `我想加入` / `我希望` / `請增加` (without customer screenshot)
+
+**Confirmed signals** (any match suggests `confirmed`):
+
+- Image attachment markdown: `![...](...)` pattern
+- Error / missing-data language: `沒有資料` / `無數據` / `找不到` / `錯誤` / `crash` / `fail`
+- Customer voice: `客戶反映` / `客戶提到` / `客戶在...看到`
+
+**Default suggestion**: `vague` (when no signal matches)
+
+The heuristic is **advisory only**; user override always wins. Pattern updates SHALL be commit-traceable in plugin source repo.
+
+## Anti-patterns
+
+The following are violations of IC_R010:
+
+```
+WRONG — silently classify without user confirmation
+> AI agent runs idd-issue Step 4.4, scans body, sees "Keller Brand Mantra"
+> Auto-applies confidence:exploratory label without AskUserQuestion
+```
+
+```
+WRONG — skip Step 4.4 because "user can do it manually later"
+> Plugin step is predicate-driven default-on; document source + 2+ issues
+> SHALL trigger triage. Skipping is a violation.
+```
+
+```
+WRONG — apply confidence:* in addition to type label, but route incorrectly
+> Issue with confidence:exploratory placed in source-doc milestone
+> Routing rule violation. Exploratory belongs in Lab project ± Future Planning.
+```
+
+```
+WRONG — make confidence:* mutually exclusive with bug/enhancement
+> Confidence is orthogonal to Type. A "confidence:exploratory + enhancement"
+> issue is well-formed (e.g., 老師 academic theory expansion).
+```
+
+## Compliant patterns
+
+```
+CORRECT — confirmed customer bug routed to milestone
+> #412 (替換鏡片無資料) labeled: bug + priority:P1 + company:QEF_DESIGN
+> + module:VitalSigns + source:suggestion_docs + confidence:confirmed
+> → milestone 向創建議_20260411 + project company:QEF_DESIGN
+> Close criteria: customer satisfaction verified
+```
+
+```
+CORRECT — exploratory theory expansion routed to Lab
+> #406 (K-means 4-step) labeled: enhancement + module:BrandEdge
+> + source:suggestion_docs + confidence:exploratory
+> → Marketing Theory Lab project, Considering column
+> NO milestone (until team commits-future)
+```
+
+```
+CORRECT — exploratory committed-future migration
+> Team reviews #406 and decides "we want to do this eventually"
+> Apply: gh issue edit --milestone "Future Planning"
+> Move card from Considering → Future Planning column in Lab project
+> Close criteria: team ship/drop decision
+```
+
+## Files Bound
+
+This rule binds:
+
+- `shared/global_scripts/00_principles/docs/en/part1_principles/CH06_integration_collaboration/rules/IC_R010_issue_source_confidence_triage.qmd` — this file (Layer 1 authoritative source)
+- `shared/global_scripts/00_principles/llm/CH06_ic.yaml` — Layer 2 LLM index entry
+- `shared/global_scripts/00_principles/.claude/rules/01-always.md` — top-level always-loaded reference
+- `shared/global_scripts/00_principles/.claude/rules/12-issue-routing.md` — Layer 3 quick reference (decision tree)
+- GitHub repo-level artifacts (non-file binding): `confidence:*` labels, `Future Planning` milestone, `Marketing Theory Lab` project (and future Lab projects matching `* Lab` pattern)
+
+Plugin source repo `PsychQuant/psychquant-claude-plugins` is downstream consumer:
+
+- `plugins/issue-driven-dev/skills/idd-issue/SKILL.md` — Step 4.4 implementation
+- `plugins/issue-driven-dev/skills/idd-diagnose/SKILL.md` — Step 3.4 implementation
+- `plugins/issue-driven-dev/references/issue-source-confidence-heuristics.md` — heuristic pattern source
+
+## Non-Goals
+
+IC_R010 explicitly does NOT include:
+
+- **ML / AI confidence classification** — keyword regex only; advisory heuristic with mandatory user confirmation
+- **Retroactive audit of all existing milestones** — only forward-applicable + 1 dogfood backfill (`向創建議_20260411`)
+- **Direct modification of plugin marketplace publish flow** — plugin source repo ships changes via its own release flow; this principle defines the contract
+- **Fourth axis (priority / urgency)** — existing `priority:*` label covers urgency; orthogonal to confidence
+- **Replacing existing type labels** — `bug` / `enhancement` / etc. unchanged; confidence is additive
+- **Modifying existing source-doc milestone pattern** — `<source>_<date>` naming preserved
+
+## Rationale (Trade-offs)
+
+The trade-off is **structural complexity vs audit clarity**. Three axes (Type × Confidence × Schedule) and 5 destinations (3 milestones × 3 project types) is more cognitive load than a flat milestone list. In exchange, the project gains:
+
+- Customers and management see source-doc milestone progress without exploratory expansion noise
+- Engineers receive early signal when work is exploratory (avoids 2-5 hr design waste)
+- 老師 academic theory ideas have a dedicated home (Lab project + optional Future Planning) without colonizing customer milestones
+- Cross-cycle long-term backlog has explicit container (`Future Planning` milestone)
+
+The trade-off favors audit clarity because mixed-source confusion costs 2-5 hr per incident, while the IC_R010 cognitive overhead is approximately 30 seconds per issue creation (one AskUserQuestion in Step 4.4) and zero overhead for normal single-issue paths (predicate-driven default-on skips).
+
+The choice of **`Future Planning` as repo-wide singleton milestone** rather than per-Lab milestones reflects YAGNI: a single backlog suffices for current scale (~12 candidate issues across all Labs). If future scale demands multi-Lab Future Planning containers, this principle can be amended without disrupting the existing taxonomy.
+
+## Rollback Strategy
+
+If IC_R010 plugin step changes cause unexpected disruption (e.g., marketplace consumer breakage, false-positive heuristic surge):
+
+- **Hot-fix (preserves principle)**: `idd-issue` and `idd-diagnose` skills check `Sys.getenv("SKIP_CONFIDENCE_TRIAGE")` env var; when set, skip Step 4.4 / 3.4 entirely. Operators can set the env var as escape hatch on hot paths.
+- **Cold-fix (suspends step)**: revert plugin Step 4.4 / 3.4 implementations. Preserve IC_R010.qmd + GitHub labels + Lab projects. Confidence triage degrades to manual `gh issue edit` operations using the existing label set.
+
+Both paths preserve the GitHub artifacts and label taxonomy. IC_R010 remains useful as manual triage discipline even if its plugin automation is suspended.
+
+For backfill rollback: the `向創建議_20260411` migration is fully reversible (`gh issue edit --remove-label confidence:exploratory --milestone "向創建議_20260411"` per migrated issue + remove from Lab project).
+
+## Migration Phases
+
+1. **Phase A (this change)** — Author IC_R010 principle text; DOC_R009 three-layer sync.
+2. **Phase B (this change)** — Create GitHub artifacts: 3 confidence labels + Future Planning milestone + Marketing Theory Lab project.
+3. **Phase C (this change)** — Document plugin skill spec in design.md (plugin source repo ships externally).
+4. **Phase D (this change)** — Dogfood backfill: migrate 6 exploratory issues from `向創建議_20260411` to Marketing Theory Lab.
+5. **Phase E (this change)** — Cross-co IC_P002 verification across 5 consuming companies.
+6. **Phase F (separate change, future)** — Plugin source ships idd-issue / idd-diagnose modifications + version bump + marketplace deploy.
+7. **Phase G (operational, ongoing)** — Quarterly review of `Future Planning` milestone (deferred, out of scope for this principle).
+
+## References
+
+- **GitHub issue #509** — proposal source (2026-05-02)
+- **`向創建議_20260411` milestone** — trigger event (mixed customer-reflected + 老師 academic theory expansion in single container)
+- **Sister principles**:
+  - **IC_R007** — GitHub Issue Attachments (sister: same axis of issue lifecycle discipline)
+  - **IC_R008** — GitHub Issue Scope Governance (sister: per-company / per-module label taxonomy; IC_R010 adds orthogonal confidence + schedule axes)
+  - **IC_R009** — Bidirectional Commit-Issue Traceability (sister: closure discipline; IC_R010 governs routing pre-closure)
+- **Sibling principles**:
+  - **MP155** — Minimize Human Input (heuristic mechanizes first-pass classification; user override always wins)
+- **Process principle**:
+  - **DOC_R009** — Triple-Layer Sync (this rule itself follows DOC_R009)
+- **Plugin source**: `PsychQuant/psychquant-claude-plugins/plugins/issue-driven-dev` (downstream consumer for Step 4.4 / 3.4 implementations)
+
+## Version History
+
+| Version | Date | Trigger | Change |
+|---------|------|---------|--------|
+| 1.0.0 | 2026-05-02 | spectra change `issue-source-confidence-triage` (issue #509) | Initial: 3D taxonomy, 5-destination routing, state machine, plugin step contracts, heuristic specification, dogfood backfill of `向創建議_20260411` |

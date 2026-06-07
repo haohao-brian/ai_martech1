@@ -1,0 +1,129 @@
+# kfe_quadrant_explanations.yaml
+#
+# Externalized display text for the BrandEdge positionKFE component's IPA
+# (Importance-Performance Analysis) quadrant section. Loaded by
+# positionKFE.R server function via yaml::read_yaml() at component init.
+#
+# Per:
+# - DEV_R050: 顯示資料外部化 — display text MUST live in yaml/csv, not R hardcode
+# - DEV_R053: AI prompt 多語系 — full zh_tw + en locale support
+# - UI_R025: 臺灣正體中文用語規範 — zh_tw uses Taiwanese vocabulary
+# - spectra change qef-brandedge-key-factor-ipa-redesign Decision 4
+# - Source-of-truth attachment: 向創建議_20260411.docx item #4 + img09
+#
+# Schema:
+#   <section>:
+#     <locale>:
+#       title: <heading text>
+#       summary: <one-line description>
+#       bands: list of {range, interpretation} (optional, for graded indicators)
+#       items: list of {key, label, description} (for quadrants)
+#
+# Sections:
+#   growth_potential — explains the X-axis metric (ideal-actual gap %)
+#   market_importance — explains the Y-axis metric (Likert importance)
+#   quadrants — explains the 4 IPA quadrants and recommended actions
+
+growth_potential:
+  zh_tw:
+    title: "成長潛力"
+    summary: "代表該屬性從目前表現提升到理想水準的改善空間"
+    bands:
+      - range: "80-100%"
+        interpretation: "有極大改善空間,是重要的成長機會"
+      - range: "50-80%"
+        interpretation: "中等改善空間,值得積極投入資源"
+      - range: "20-50%"
+        interpretation: "改善空間有限,需評估投資效益"
+      - range: "0-20%"
+        interpretation: "已接近理想狀態,維持現狀即可"
+  en:
+    title: "Growth Potential"
+    summary: "Represents the gap between the attribute's current performance and the ideal level — the room to grow."
+    bands:
+      - range: "80-100%"
+        interpretation: "Substantial gap; a major growth opportunity worth prioritizing."
+      - range: "50-80%"
+        interpretation: "Meaningful gap; deserves dedicated investment."
+      - range: "20-50%"
+        interpretation: "Limited gap; weigh the cost-benefit before investing."
+      - range: "0-20%"
+        interpretation: "Already near ideal; sustain the current level."
+
+market_importance:
+  zh_tw:
+    title: "市場重要性"
+    summary: "反映該屬性對整體市場競爭力的影響程度"
+    bands:
+      - range: "100%"
+        interpretation: "關鍵屬性,直接影響品牌成敗"
+      - range: "50%"
+        interpretation: "重要屬性,對品牌表現有顯著影響"
+      - range: "0%"
+        interpretation: "次要屬性,影響有限"
+    notes:
+      - "數值越高,代表消費者越重視此屬性"
+      - "市場重要性以 Likert 1-5 內部刻度儲存(範圍:0-5),UI 顯示時可換算成百分比(importance / 5 × 100)"
+  en:
+    title: "Market Importance"
+    summary: "Reflects how much the attribute drives overall market competitiveness."
+    bands:
+      - range: "100%"
+        interpretation: "Critical attribute — directly determines brand success or failure."
+      - range: "50%"
+        interpretation: "Significant attribute — meaningfully influences brand performance."
+      - range: "0%"
+        interpretation: "Secondary attribute — limited influence."
+    notes:
+      - "Higher values indicate consumers care more about this attribute."
+      - "Importance is stored on a Likert 1-5 internal scale (range: 0-5); UI may render as a percentage (importance / 5 × 100)."
+
+quadrants:
+  zh_tw:
+    title: "四象限解讀"
+    summary: "依成長潛力(X 軸)與市場重要性(Y 軸)交叉分類,協助訂定行銷投資優先序"
+    items:
+      - key: "Leading"
+        label: "領先賽道"
+        position: "右上"
+        criteria: "高成長潛力 + 高重要性"
+        recommendation: "持續維持優勢,投資加碼"
+      - key: "Mature"
+        label: "成熟賽道"
+        position: "左上"
+        criteria: "低成長潛力 + 高重要性"
+        recommendation: "維持領先優勢,守住既有地位"
+      - key: "Niche"
+        label: "利基賽道"
+        position: "右下"
+        criteria: "高成長潛力 + 低重要性"
+        recommendation: "差異化機會,可作為獨特賣點"
+      - key: "Low-Priority"
+        label: "低優先賽道"
+        position: "左下"
+        criteria: "低成長潛力 + 低重要性"
+        recommendation: "資源最低配置,觀察為主"
+  en:
+    title: "Four-Quadrant Interpretation"
+    summary: "Classify each attribute by growth potential (X) and market importance (Y) to set marketing investment priority."
+    items:
+      - key: "Leading"
+        label: "Leading"
+        position: "top-right"
+        criteria: "high growth potential + high importance"
+        recommendation: "Sustain the lead and invest further."
+      - key: "Mature"
+        label: "Mature"
+        position: "top-left"
+        criteria: "low growth potential + high importance"
+        recommendation: "Defend the leadership; protect existing position."
+      - key: "Niche"
+        label: "Niche"
+        position: "bottom-right"
+        criteria: "high growth potential + low importance"
+        recommendation: "Differentiation opportunity; use as a unique selling point."
+      - key: "Low-Priority"
+        label: "Low-Priority"
+        position: "bottom-left"
+        criteria: "low growth potential + low importance"
+        recommendation: "Allocate minimum resources; monitor only."

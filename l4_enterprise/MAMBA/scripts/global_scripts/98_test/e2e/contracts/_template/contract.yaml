@@ -1,0 +1,99 @@
+# MP165 Dashboard Presence Contract — TEMPLATE for new companies
+# Copy this file to <company_lowercase>.yaml in the parent directory.
+#
+# Schema validated by contracts.R::validate_contract_yaml().
+#
+# ====================================================================
+# OPT-OUT MECHANISMS (per MP165 Hard Fail Discipline)
+# ====================================================================
+#
+# A new company that does NOT implement a particular dashboard module
+# (e.g., KITCHENMAMA without BrandEdge) has TWO opt-out paths:
+#
+# Path 1: Declarative-dependency natural opt-out (PREFERRED)
+#   The company's update_scripts/DRV/_targets.R contains NO BrandEdge
+#   derivation target (no df_position producer). The contract framework
+#   walks the _targets DAG to determine which contracts to evaluate;
+#   absent DRV target -> contract not evaluated. NO flag needed in this
+#   YAML; you may simply omit the `brandedge:` block entirely.
+#
+# Path 2: Explicit enabled:false flag (DOCUMENTATION)
+#   Set `enabled: false` on the module block to make the opt-out
+#   visible to reviewers. The framework still walks the DAG; this flag
+#   is documentation of intent, not behavior. Useful when the company
+#   plans to enable the module later (so the YAML scaffold is in place
+#   but inactive).
+#
+# Path 1 is preferred for permanent opt-out (KITCHENMAMA never plans
+# BrandEdge). Path 2 is preferred for temporary opt-out (company is
+# in onboarding and will enable the module post-launch).
+#
+# DO NOT use a "skip_contract" or "soft_warn_mode" flag — those are
+# explicitly forbidden by MP165 Hard Fail Discipline.
+
+company: TEMPLATE_REPLACE_ME
+
+modules:
+
+  # ---- BrandEdge (delete this block if the company does not use it) ----
+  brandedge:
+    enabled: true                # set false for explicit opt-out documentation
+    sub_tabs:
+
+      position:
+        active_product_lines: []                # list every active product_line
+        contracts:
+          - selector: "position-position_table"
+            assertion: "row_count_excluding_placeholders >= 3"
+            severity: critical                  # critical fails deploy gate; warning reports only
+          - selector: "position-brand"
+            assertion: "filter_choice_count >= 2"
+            severity: critical
+          - selector: "position-component_status"
+            assertion: "no_red_error_text"
+            severity: critical
+
+  # ---- TagPilot ----
+  tagpilot:
+    enabled: true
+    sub_tabs:
+
+      customerValue:
+        active_product_lines: [all]
+        contracts:
+          - selector: "customerValue-kpi_total_customers"
+            assertion: "kpi >= 100"             # tune based on actual customer count
+            severity: critical
+          - selector: "customerValue-kpi_avg_order_value"
+            assertion: "kpi > 0"
+            severity: critical
+          - selector: "customerValue-pie_value_segments"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: critical
+
+  # ---- Marketing Vital-Signs ----
+  vitalsigns:
+    enabled: true
+    sub_tabs:
+
+      customerRetention:
+        active_product_lines: [all]
+        contracts:
+          - selector: "customerRetention-kpi_retention_rate"
+            assertion: "kpi > 0"
+            severity: warning                   # warning until BTYD model stable
+
+  # ---- Dashboard Overview ----
+  dashboard_overview:
+    enabled: true
+    sub_tabs:
+
+      overview:
+        active_product_lines: [all]
+        contracts:
+          - selector: "dashboardOverview-kpi_total_revenue"
+            assertion: "kpi > 0"
+            severity: critical
+          - selector: "dashboardOverview-kpi_total_dna_customers"
+            assertion: "kpi > 0"
+            severity: critical

@@ -1,0 +1,11 @@
+{
+  "legacy_files": 153,
+  "dedup_groups": 145,
+  "created": 145,
+  "reused_existing": 0,
+  "closed_now": 53,
+  "open_groups": 92,
+  "closed_groups": 53,
+  "consolidated_groups": 7,
+  "mapping_csv": "output/issue_migration/legacy_to_github_issue_mapping.csv"
+}

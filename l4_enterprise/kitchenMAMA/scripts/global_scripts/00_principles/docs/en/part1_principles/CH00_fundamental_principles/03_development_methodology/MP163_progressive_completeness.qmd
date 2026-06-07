@@ -1,0 +1,308 @@
+---
+title: "MP163: Progressive Completeness"
+subtitle: "Pipelines must run end-to-end regardless of human-input completeness; gaps materialize as visible sentinels, not as halts"
+category: "Meta-Principle"
+type: "Meta-Principle"
+id: "MP163"
+version: "1.0"
+date_created: "2026-04-30"
+date_modified: "2026-04-30"
+status: "active"
+weight: 163
+author: "Claude (spectra change mp163-progressive-completeness-principle, GitHub issue #505)"
+related_to:
+  - "MP029": "No Fake Information (MP163 sentinels are explicit gap markers, NOT fabricated data — they strengthen MP029 rather than violate it)"
+  - "MP154": "Side Effect Defense (MP154 is the field-level sentinel rule — at every mapping site use sentinel, not NA — and MP163 is its architectural escalation: the entire pipeline must remain runnable when human inputs are incomplete)"
+  - "MP155": "Minimize Human Input (MP155 says human input should be the exception not the default; MP163 is the corollary that defines what the pipeline does when the human input minimization is not yet complete — it keeps running)"
+  - "MP162": "Bridge End-to-End Realization (MP162 governs the time axis — eventual L5 completion is mandatory; MP163 governs the human-input-completeness axis — the pipeline is always runnable at any L. The two are orthogonal and complementary.)"
+  - "MP165": "Dashboard Presence as Pipeline Acceptance (MP165 governs the rendering-acceptance axis — pipeline only succeeds when every dashboard tab × platform × product_line renders contract-pass content; MP163 governs the input-completeness axis — pipeline keeps running when human inputs are absent. The two are orthogonal: a pipeline can satisfy MP163 by gracefully sentinel-bucketing gaps yet fail MP165 by leaving those gaps as user-visible empty tabs, and vice versa. Both must hold for user-facing completeness.) [back-edit added 2026-05-10 per spectra change dashboard-presence-verification]"
+binds:
+  - "shared/update_scripts/ETL/**/*.R"
+  - "shared/global_scripts/16_derivations/fn_D*_core.R"
+  - "shared/global_scripts/05_etl_utils/**/*.R"
+  - "shared/global_scripts/00_principles/.claude/rules/01-always.md"
+---
+
+## Summary
+
+Pipelines and derivations **must run end-to-end regardless of human-input completeness**. ETL and DRV scripts SHALL NOT halt because human-curated inputs (Gsheets, master data files, manual classification tables) are missing or incomplete. Gaps materialize as **visible sentinel values** (e.g. `'unclassified'`, `'UNKNOWN'`) and surface to a business-accessible attention loop (coverage audit table, derived Gsheet, dashboard panel) so that human maintainers can incrementally complete coverage. Each addition reduces the sentinel-bucketed row count on the next pipeline run **without any code change, schema migration, or redeploy**.
+
+## Motivation
+
+GitHub issue #505 (2026-04-30): during `/spectra-discuss` re-evaluation of QEF Group A (issues #460 / #461 / #462 / #504), the QEF system surfaced an architectural commitment that had never been formalized. The 19,079 unclassified rows in `df_dna_by_customer` were not a bug:
+
+- 88 self-brand ASINs lacked entries in the `product_profile_<pl>` Gsheet
+- The sales→time-series transform LEFT-JOIN'd against a partial mapping table
+- Unmapped rows received `product_line_id = 'unclassified'` (sentinel)
+- The pipeline completed; downstream DRV (D01 customer DNA, D04 Poisson) produced non-empty results for the 10 product lines that **did** have mapped data
+- A `df_amz_product_line_coverage_audit` table surfaced the 88 unmapped ASINs to a derived Gsheet
+- Internal business maintainers could backfill the Gsheet to incrementally close the gap
+
+This was **the principle working as intended**, not a defect. But because the principle was implicit, the same architectural commitment was repeatedly mis-classified:
+
+- New developers and AI agents would see incomplete human input and add `stop("Missing classification")` to ETL scripts
+- Issue #504 was misdiagnosed as an "ETL JOIN bug" before the empirical investigation showed the pipeline was correctly using its sentinel pathway
+- The architectural commitment leaked into ad-hoc reasoning across the codebase: some ETLs hard-failed on missing input, others used sentinels; some gaps surfaced to dashboards, others only to log files
+
+> User observation that triggered this principle (2026-04-30 `/spectra-discuss`):
+>
+> 「就算沒有完全完成也能跑完 derivation」這個條件,就是 MVP 的 meta principle 嗎?還是有更好的名字
+
+The architectural commitment is sharper and narrower than MVP — it governs only "pipeline tolerance to incomplete human input" — and deserves a Tier-1 name.
+
+## Principle Statement
+
+> A pipeline must remain runnable from source to dashboard at every state of human-input completeness. When inputs are absent, gaps materialize as visible sentinels that surface to a business attention loop. Coverage improves asymptotically as humans incrementally fill inputs, with no code change required.
+
+The principle decomposes into four gates. A pipeline is MP163-compliant if and only if all four hold.
+
+## Gate 1: Always-Runnable Pipeline
+
+ETL and DRV scripts SHALL run to completion regardless of human-input completeness in upstream sources. Scripts SHALL NOT call `stop()`, `abort()`, or any equivalent that halts the pipeline solely because human-curated input is missing or incomplete.
+
+**Hard failures are reserved for genuine engineering failures** — database connectivity loss, schema corruption, code defects — NOT for absent business inputs.
+
+### Engineering failure vs. absent business input
+
+| Cause                                              | Action                          | Example                                                        |
+| -------------------------------------------------- | ------------------------------- | -------------------------------------------------------------- |
+| Database unreachable                               | `stop()` — engineering failure  | `dbConnect()` returns connection error                         |
+| Required schema column missing                     | `stop()` — code defect          | Source has no `order_id` field that the script expects         |
+| Optional master Gsheet missing                     | `warning()` + continue          | `KEYS.xlsx` not found; ETL proceeds with available sources     |
+| ASIN lacks classification in product profile       | sentinel + continue             | Unmapped ASIN gets `product_line_id = 'unclassified'`          |
+| Brand absent from positioning Gsheet               | sentinel + continue             | Unmapped brand gets `brand = 'UNKNOWN_BRAND'`                  |
+
+### Code-level example
+
+```r
+# Wrong — halts pipeline on missing human input
+mapping <- get_asin_to_pl_mapping()
+if (any(is.na(sales$product_line_id))) {
+  stop("Some ASINs have no product_line_id mapping; cannot proceed.")
+}
+
+# Right — pipeline continues with sentinel for unmapped rows
+sales <- sales %>%
+  left_join(mapping, by = "asin") %>%
+  mutate(product_line_id = coalesce(product_line_id, "unclassified"))
+# Downstream DRV receives a complete table; the 'unclassified' bucket
+# surfaces the gap to the audit table without halting.
+```
+
+## Gate 2: Visible-Gap Sentinel Materialization
+
+When human-input gaps cause a row to lack a categorical value, the pipeline SHALL materialize the gap as an explicit sentinel value. The pipeline SHALL NOT silently drop affected rows, SHALL NOT replace missing categorical values with `NULL` / `NA` in user-facing tables, and SHALL NOT obscure the gap by aggregating it into another bucket.
+
+This gate is the architectural escalation of MP154 (Side Effect Defense). MP154 states the field-level rule: at every mapping site, use a sentinel rather than `NA`. MP163 states the architectural consequence: when this sentinel rule is followed system-wide, the pipeline becomes runnable end-to-end with gaps surfaced as visible buckets.
+
+### Concrete example (QEF)
+
+In QEF's D01 customer DNA derivation (`fn_D01_02_core.R`), aggregation by `product_line_id` includes:
+
+```r
+# product_line_id_filter is the canonical slice column
+df_dna_by_customer <- df_dna_long %>%
+  mutate(product_line_id_filter = coalesce(
+    product_line_id,
+    "unclassified"            # MP163 sentinel
+  )) %>%
+  group_by(customer_id, product_line_id_filter) %>%
+  summarise(...)
+```
+
+The result table contains a distinct slice `product_line_id_filter = 'unclassified'` that:
+
+- Is visible to dashboards as a real PL (not hidden, not aggregated into "all")
+- Carries the row count and customer count for unmapped rows
+- Is filterable so business maintainers can drill into the gap
+
+### Sentinel choice differs from NULL in semantics
+
+A `NULL` value asserts "the value is unknown to the system." A sentinel value asserts "the value is known to be in the gap bucket." The two are not interchangeable:
+
+- `NULL` aggregates can be silently dropped by SQL `GROUP BY`
+- Sentinel aggregates form a real group that appears in dashboard slices and filters
+- Sentinel groups can be queried, audited, counted, and reduced over time
+- `NULL` groups cannot be reduced because they are invisible
+
+## Gate 3: Surface-to-Attention Gaps
+
+Pipelines SHALL expose human-input gaps to a business-accessible attention surface so that maintainers can act on them. The pipeline SHALL NOT bury gap information in log files or runtime warnings only.
+
+### Acceptable attention surfaces
+
+| Surface                                  | When it fits                                       | Example artifact                          |
+| ---------------------------------------- | -------------------------------------------------- | ----------------------------------------- |
+| Coverage audit table (in `app_data`)     | Always — minimum surface                           | `df_amz_product_line_coverage_audit`      |
+| Derived Gsheet linked to audit table     | Business team owns the input remediation           | `Coverage Audit (Self ASIN → PL)` Gsheet  |
+| Shiny dashboard panel                    | Maintainers already use the dashboard daily        | "Coverage" tab inside admin module        |
+| Email digest (cron-scheduled)            | Maintainers do not check dashboard regularly       | Weekly "Unclassified rows: N" digest      |
+
+The audit table is the **mandatory minimum**; at least one of the other three is required so that humans actually see the gap.
+
+### Naming convention for surface tables
+
+Coverage audit tables SHALL follow `df_*_coverage_audit` pattern (e.g. `df_amz_product_line_coverage_audit`, `df_brand_mapping_coverage_audit`). This makes them grep-able and gives the rest of the codebase a consistent place to look for gap surfaces.
+
+### Why log-only is forbidden
+
+Log files have no audience by default — they are read only when something is already known to be broken. Gaps that exist *as designed* (waiting for human input) need a surface that the human input owner sees as part of their normal workflow, not a surface they only consult after a fire.
+
+## Gate 4: Asymptotic Completeness Without Redeploy
+
+When human maintainers add missing input (a new row in a Gsheet, a new entry in a master file), the next pipeline run SHALL automatically incorporate the addition and reduce the sentinel-bucketed row count. The system SHALL NOT require code changes, schema migrations, or redeployment to absorb new human input.
+
+### QEF retroactive validation
+
+The 19,079 unclassified rows in `df_dna_by_customer` correspond to 88 self-brand ASINs not yet entered into the `product_profile_<pl>` Gsheet. The asymptotic-completeness contract guarantees:
+
+```
+T0:  88 ASINs unmapped  → 19,079 unclassified rows in DNA
+T1:  business adds ASIN A1 + A2 → next ETL run
+T2:  86 ASINs unmapped  → ~18,500 unclassified rows in DNA
+                         (the orders for A1 + A2 now classify correctly)
+T3:  business completes the remaining 86 → next ETL run
+T4:  0 ASINs unmapped   → 0 unclassified rows
+                         (the 'unclassified' bucket is now empty but still
+                          present in the schema; if a new gap appears later,
+                          it materializes there automatically)
+```
+
+Throughout T0 → T4, **no R code changes, no schema migrations, no redeploys**. The 10 already-mapped product lines continue producing identical output for their existing customers.
+
+### What this enables
+
+- The MVP can ship at T0 with 88 known gaps because the dashboard already works for the 10 mapped PLs
+- The business team's input completion work is decoupled from engineering deployment cycles
+- Coverage improves continuously without "release pressure" forcing premature shipping or completeness gating
+
+## Sister Principle Cross-References
+
+MP163 sits in a four-principle cluster that together govern the system's relationship with human-curated inputs:
+
+| Principle | Axis                                | What it specifies                                                            |
+| --------- | ----------------------------------- | ---------------------------------------------------------------------------- |
+| MP029     | Honesty                             | Don't fabricate data; explicit gap markers (sentinels) are honest, not fake  |
+| MP154     | Field level                         | At every mapping site, use a sentinel; never silently produce `NA`           |
+| MP155     | Input minimization                  | Default to system-derived values; humans only fill what cannot be derived    |
+| MP162     | Time / ship-readiness               | A bridge eventually reaches L5 (end-to-end retention audit complete)         |
+| **MP163** | **Human-input completeness**        | **Pipeline runs at every state of human-input completeness; coverage grows asymptotically** |
+
+### MP163 as the architectural escalation of MP154
+
+MP154 states the field-level rule. MP163 states the architectural consequence:
+
+- MP154: every mapping site uses a sentinel
+- MP163: when MP154 is followed system-wide, the pipeline becomes always-runnable, gaps become visible, and coverage becomes incremental
+
+A codebase that follows MP154 but violates MP163 (e.g. has sentinels in some places, hard `stop()` in others) achieves field-level correctness but loses the architectural property. A codebase that achieves MP163 but violates MP154 (uses sentinels at the boundary but introduces `NA` later) loses the visible-gap property.
+
+### MP163 as the corollary of MP155
+
+MP155 states that human input should be minimized — defaults derive from the system, humans only fill what cannot be derived. MP163 states what happens when MP155's minimization is not yet complete:
+
+- MP155: minimize the number of fields humans must fill
+- MP163: while humans are filling them, the pipeline still runs
+
+If MP163 were absent, MP155 could be enforced only by gating: "no derivation runs until 100% of MP155-required inputs are filled." That contradicts MP155's spirit, which is to let the system do as much work as it can while humans incrementally fill the residue. MP163 is what makes MP155 actually deployable.
+
+### MP163 as the orthogonal complement of MP162
+
+MP162 governs the **time axis** of bridge ship-readiness: a bridge progresses through L1 → L2 → L3 → L4 → L5 over time, and L5 is mandatory eventually. MP163 governs the **human-input-completeness axis**: at any L, the pipeline runs at any state of human-input completeness.
+
+The two are orthogonal:
+
+```
+                                MP163 axis (human-input completeness)
+                                0%        50%       100%
+                              ┌─────────┬─────────┬─────────┐
+                          L1  │ runs    │ runs    │ runs    │
+                              ├─────────┼─────────┼─────────┤
+                MP162 axis L2 │ runs    │ runs    │ runs    │
+                (time)        ├─────────┼─────────┼─────────┤
+                          L3  │ runs    │ runs    │ runs    │
+                              ├─────────┼─────────┼─────────┤
+                          L4  │ runs    │ runs    │ runs    │
+                              ├─────────┼─────────┼─────────┤
+                          L5  │ runs    │ runs    │ runs    │
+                              └─────────┴─────────┴─────────┘
+```
+
+Both axes must be satisfied in their own way: MP162 says move toward the bottom row; MP163 says move toward the right column. The pipeline must be runnable in every cell of the grid. Neither axis can substitute for the other.
+
+### MP163 sentinels do not violate MP029
+
+MP029 forbids fabricated information. A sentinel like `'unclassified'` is not fabricated — it is an **explicit gap marker** stating "this row's classification is in the gap bucket." Compare:
+
+- MP029 violation: assigning `product_line_id = 'blb'` to an unmapped ASIN to "look complete"
+- MP163 compliance: assigning `product_line_id = 'unclassified'` to surface the gap
+
+The two principles work in the same direction. MP163's sentinels are MP029's correct way to handle missing data: visibly, not by fabrication.
+
+## Files Bound by This Principle
+
+Per MP156 (Two-Tier Normativity), MP163 binds the following Tier-2 files. Modifications to these files SHALL preserve MP163's four gates.
+
+- `shared/update_scripts/ETL/**/*.R` — every ETL script is subject to the always-runnable + visible-gap gates. **Category C (Authoring Dictionary)**: scripts encode the runtime contract that MP163 governs.
+- `shared/global_scripts/16_derivations/fn_D*_core.R` — every derivation core function must propagate sentinels rather than dropping rows. Same category as ETL scripts above.
+- `shared/global_scripts/05_etl_utils/**/*.R` — ETL utility functions that perform mappings or joins SHALL use the LEFT-JOIN + COALESCE-to-sentinel pattern.
+- `shared/global_scripts/00_principles/.claude/rules/01-always.md` — Layer 3 quick reference for this principle.
+
+### Canonical naming for surface tables
+
+Coverage audit tables SHALL follow the `df_*_coverage_audit` pattern. This is a binding naming convention, not a suggestion: tools that consume gap surfaces (future linters, dashboards, CI checks) rely on this pattern to discover them.
+
+### Change Discipline
+
+Any modification to bound files that would cause an MP163 gate to fail SHALL:
+
+1. Be flagged in PR review as an MP163 violation.
+2. Trigger IC_P002 cross-company verification if the modification touches files shared across consuming companies (QEF_DESIGN, D_RACING, MAMBA, WISER, kitchenMAMA).
+3. Be recorded in the commit message with the gate affected.
+
+Specifically, **introducing a `stop()` on missing human input is an MP163 violation** unless the commit message contains a documented justification that the input is genuinely required for engineering correctness (not merely "we want this to be filled in").
+
+## Anti-Patterns
+
+| Anti-pattern                                                | Why it violates MP163                                                              |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `stop("Missing PL classification")` in ETL/DRV              | Halts pipeline on absent business input — Gate 1 violation                         |
+| `LEFT JOIN ... WHERE product_line_id IS NOT NULL`           | Silently drops unmapped rows — Gate 2 violation                                    |
+| Replacing missing categorical with `NA` in user-facing table | Aggregations silently drop the gap — Gate 2 violation                              |
+| Logging unmapped rows to `Rprintf` only                     | Gap is buried in log; no business-accessible surface — Gate 3 violation            |
+| Requiring 100% mapping completeness before deployment       | Forces shipping pressure or perpetual delay — Gate 4 violation                     |
+| Hardcoded mapping table in R code (no Gsheet pathway)       | Each addition requires code change + redeploy — Gate 4 violation                   |
+
+## Compliant Patterns
+
+| Pattern                                                                | Which gate it satisfies               |
+| ---------------------------------------------------------------------- | ------------------------------------- |
+| `LEFT JOIN mapping ON ... + COALESCE(pl_id, 'unclassified')`           | Gate 1 (continues) + Gate 2 (visible) |
+| `df_*_coverage_audit` table populated each ETL run                     | Gate 3 (audit table surface)          |
+| Derived Gsheet filtered to `product_line_id = 'unclassified'`          | Gate 3 (business-accessible surface)  |
+| Mapping source is a Gsheet that the ETL re-reads on every run          | Gate 4 (no redeploy when Gsheet edits)|
+| Sentinel is a domain-meaningful value (`'unclassified'` not `'X'`)     | Gate 2 (semantically visible)         |
+
+## What This Principle Does NOT Specify
+
+- **Hard rate-of-coverage targets**: MP163 does not say "unclassified bucket must drop by N% per quarter." Coverage cadence is a business decision, not an architectural one.
+- **Specific surface ownership**: MP163 does not say "the audit Gsheet must be owned by the operations team." Ownership is a process decision tracked separately.
+- **The `stale_days` threshold for surface freshness**: A future amendment may add a stale-coverage detector analogous to MP162's stale-tracking, but this v1 of the principle does not specify one.
+- **A traditional Chinese mirror of this `.qmd`**: deferred to the project's broader zh translation backlog (consistent with MP160, MP161, MP162, which also lack zh mirrors).
+
+## Trigger Issue
+
+Authored in response to GitHub issue #505 (2026-04-30) — `[PRINCIPLE] MP163 Progressive Completeness`. The proposal emerged from `/spectra-discuss` re-evaluation of QEF Group A (issues #460 / #461 / #462 / #504), which surfaced the architectural commitment that the QEF system had been quietly enforcing since the `df_amz_product_line_coverage_audit` table was first added.
+
+The principle formalizes a commitment that already existed implicitly across QEF, MAMBA, D_RACING, WISER, and kitchenMAMA pipelines, so that future ETL/DRV authoring (human or AI) has explicit governance and does not regress to ad-hoc `stop()` on missing human input.
+
+## Related Principles
+
+- **MP029** — No Fake Information. MP163 sentinels are explicit gap markers, not fabricated data; the two principles work in the same direction.
+- **MP154** — Side Effect Defense. MP163 is the architectural escalation of MP154's field-level sentinel rule.
+- **MP155** — Minimize Human Input. MP163 is the corollary that defines pipeline behavior when MP155's input minimization is not yet 100% complete.
+- **MP156** — Two-Tier Normativity. MP163 is itself Tier-1 normative; the ETL/DRV scripts it binds are Tier-2 Authoring Dictionary files.
+- **MP162** — Bridge End-to-End Realization. MP163 covers the human-input-completeness axis; MP162 covers the time/ship-readiness axis. Orthogonal and complementary.
+- **MP064** — ETL-Derivation Separation. The Gate 1 (always-runnable) requirement applies independently to both ETL and DRV — neither layer may halt on absent business input.
+- **DOC_R009** — Principle Triple-Layer Synchronization. This principle was authored through the prescribed three-layer flow: `.qmd` (this file) → `llm/CH00_meta.yaml` → `.claude/rules/01-always.md`.
+- **IC_P002** — Cross-Company Verification. Modifications to MP163-bound shared files trigger cross-company verification (QEF/D_RACING/MAMBA/WISER/kitchenMAMA).

@@ -1,0 +1,10 @@
+{
+  "name": "issue-driven-dev",
+  "description": "Issue-driven development methodology: issue → diagnose → implement → verify → close. Every change traces back to an issue, every issue has a verified resolution.",
+  "version": "2.20.0",
+  "author": {
+    "name": "Che Cheng"
+  },
+  "license": "MIT",
+  "keywords": ["github", "issues", "methodology", "tdd", "code-review", "workflow", "codex"]
+}

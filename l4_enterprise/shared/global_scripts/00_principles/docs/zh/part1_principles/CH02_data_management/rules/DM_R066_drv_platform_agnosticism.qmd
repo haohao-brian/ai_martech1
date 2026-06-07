@@ -1,0 +1,246 @@
+---
+id: DM_R066
+title: DRV 平台無關性
+subtitle: DRV scripts SHALL NOT hard-code 平台名稱;平台識別由 orchestrator 於 runtime 傳入
+type: Rule
+category: Data Management
+status: active
+related:
+  - DM_R028   # ETL Data Type Separation(姊妹原則 — ETL 規定 per-platform 命名;DM_R066 在 DRV 層禁止)
+  - DM_R042   # Makefile Command Reference(orchestrator 的 make verify-drv 透過本規則的 env var 契約 invoke DRV scripts)
+  - DM_R047   # Multi-Platform Data Synchronization(配合本規則修訂或 sunset — 其執行載體 `update_all_platforms_poisson.R` 已刪除)
+  - MP064     # ETL-Derivation Separation(DRV 在 canonical schema 之上運作;本規則的前提是 algorithm 與平台無關)
+  - MP140     # Pipeline Orchestration(`_targets.R` 已宣告式 iterate platforms × scripts;本規則的解析機制搭乘此 iteration)
+  - MP165     # Dashboard Presence as Pipeline Acceptance(v1.3 gate 驗證 DRV 輸出 shape per-company;本規則藉統一 table naming 簡化該 gate)
+version: 1.0.0
+date-created: "2026-05-14"
+author: "Claude(spectra change dm-r066-drv-platform-agnosticism, GitHub issue #670)"
+law: Data Management
+article-number: Rule 66
+parent_principle: MP064
+triggered_by: "Issue #670 — 於 #668(MP165 v1.3) close-out 對話中浮現。為 #661 root cause 分析的第三層:加新平台到 DRV 需寫一份近 100% 重複的 `<platform>_<group>_<seq>.R` 檔,並由 `update_all_platforms_poisson.R` 內 hard-coded `PLATFORMS` list 加重耦合。"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+---
+
+# DM_R066: DRV 平台無關性 {#overview}
+
+## 規則
+
+`shared/update_scripts/DRV/**/*.R` 內的 DRV scripts **SHALL NOT** 在以下位置嵌入平台識別字(`cbz`、`amz`、`eby`、`shp`、`tiktok` 等):
+
+- 檔名
+- 目錄路徑(`DRV/cbz/`、`DRV/eby/`)
+- Header `# PLATFORM: <platform>` 標籤
+- SQL templates(`sprintf("df_cbz_%s", ...)`)
+- 輸出表 literal(`dbWriteTable(con, "df_eby_poisson_analysis_all", ...)`)
+- 任何成為 script 結構特徵的其他位置
+
+平台識別 SHALL 在 runtime 由以下機制流入:
+
+1. **`Sys.getenv("DRV_PLATFORM")`** — 主要機制(orchestrator 路徑)
+2. **`Sys.getenv("MAMBA_PLATFORM")`** — fallback(既有 orchestrator env var,向後相容)
+3. **`--platform <code>` CLI flag** — last resort(直接 `Rscript` 呼叫)
+
+若三個解析來源全部未設定或為空,script SHALL 透過 `stop()` fail-fast,結構化錯誤訊息中需含 script 名稱與三個來源的嘗試順序。
+
+## 設立理由
+
+ETL 層(per DM_R028 的 `{platform}_ETL_{datatype}_{phase}.R`)合理 per-platform 變化,因為來源 schema 真的不同(Cyberbiz JSON vs Amazon ASIN vs eBay GTIN — 各需獨立 parser)。DRV 層在 canonical schema 之上運作(`canonical → canonical`);algorithm 本身與平台無關。
+
+Per-platform DRV files(例如 `cbz_D04_02.R` 與 `eby_D04_02.R` 只差一個 `s/cbz/eby/g`)是純粹命名重複,沒有 algorithm 上的正當理由。重複會隨平台 × DRV groups 數量倍數增長。
+
+**將 DM_R028 de-facto 擴張到 DRV** 是慣例飄移 — DM_R028 命名模式裡的 `_ETL_` 標誌已暗示僅限 ETL 層。DM_R066 把這條邊界顯性化,並規定 DRV 層的解析機制。
+
+## 適用範圍
+
+| 層級 | 命名規則 | 容許 hard-coding? |
+|---|---|---|
+| ETL | DM_R028:`{platform}_ETL_{datatype}_{phase}.R` | YES — per-platform parser,來源 schema 各異 |
+| **DRV** | **DM_R066:檔名 + 內容皆與平台無關** | **NO — algorithm 在 canonical schema 上運作** |
+| Application(Shiny) | per-company config | 平台清單由 config 驅動,不寫死 |
+
+DM_R066 普遍適用於所有 DRV groups(D01-D11)與 5 家消費公司(QEF_DESIGN / D_RACING / MAMBA / WISER / kitchenMAMA)。
+
+## 規定的解析機制
+
+DRV scripts SHALL 在 script startup 呼叫 `resolve_drv_platform()` helper(或等效 inline 邏輯):
+
+```r
+resolve_drv_platform <- function(args = commandArgs(trailingOnly = TRUE)) {
+  # 1. DRV_PLATFORM env var(主要)
+  platform <- Sys.getenv("DRV_PLATFORM", unset = "")
+
+  # 2. MAMBA_PLATFORM env var(fallback — orchestrator 向後相容)
+  if (!nzchar(platform)) {
+    platform <- Sys.getenv("MAMBA_PLATFORM", unset = "")
+  }
+
+  # 3. --platform <code> CLI flag(last resort)
+  if (!nzchar(platform)) {
+    idx <- which(args == "--platform")
+    if (length(idx) == 1L && idx < length(args)) {
+      platform <- args[[idx + 1L]]
+    }
+  }
+
+  if (!nzchar(platform)) {
+    stop(
+      "DM_R066 violation: platform unresolved for ", basename(sys.frame(1)$ofile %||% "<script>"),
+      "\n  Resolution sources tried (in order): DRV_PLATFORM env var, MAMBA_PLATFORM env var, --platform CLI flag",
+      "\n  Set one of them or invoke via the orchestrator (make run)."
+    )
+  }
+
+  # 驗證 — 拒絕 typo
+  active <- names(get_platform_config())
+  if (!platform %in% active) {
+    stop(
+      "DM_R066 violation: platform '", platform, "' not in active config.",
+      "\n  Valid platforms: ", paste(active, collapse = ", ")
+    )
+  }
+
+  platform
+}
+```
+
+每個 script 內 SHALL 只透過此 helper 解析平台一次 — 不在 SQL templates 內散落 `Sys.getenv()` 讀取。
+
+## 受本規則約束的檔案
+
+本規則約束:
+
+- `shared/update_scripts/DRV/**/*.R` — 所有 DRV scripts SHALL NOT 在 `valid_platforms` 白名單常數以外的位置出現平台名稱 literal
+- `shared/update_scripts/_targets.R` — orchestrator dispatch SHALL 優先解析 group-based 路徑(`DRV/D04/D04_02.R`),fallback 才到 per-platform 路徑(`DRV/cbz/cbz_D04_02.R`)
+- `shared/global_scripts/04_utils/fn_resolve_drv_platform.R`(或等效)— 實作 3-tier 解析 chain 的 helper
+- `shared/global_scripts/00_principles/docs/en/part1_principles/CH02_data_management/rules/DM_R028_etl_data_type_separation.qmd` — 補上範圍澄清子句,交叉引用 DM_R066
+
+三層同步(per DOC_R009):
+
+- Layer 1(.qmd):本檔 + en mirror
+- Layer 2(`llm/CH02_data.yaml`):DM_R066 entry 含 normative 內容與 rule_natural sub-rules
+- Layer 3(`.claude/rules/01-always.md`):MP/DM_R/DEV_R quick reference 區段提及 DM_R066
+
+## 範例
+
+### 合規 — 單一 platform-agnostic script
+
+```r
+# shared/update_scripts/DRV/D04/D04_02.R
+#####
+# DERIVATION: D04_02 Poisson Analysis(跨平台)
+# GROUP: D04
+# SEQUENCE: 02
+# PURPOSE: 對銷售資料逐平台跑 Poisson regression 估計 predictor features 的效果
+# CORE_FUNCTION: in-line(無獨立 fn_*_core.R)
+# CONSUMES: df_{platform}_sales_complete_time_series_{product_line}
+# PRODUCES: df_{platform}_poisson_analysis_{product_line}, df_{platform}_poisson_analysis_all
+#####
+
+source(file.path("scripts", "global_scripts", "22_initializations", "sc_Rprofile.R"))
+autoinit()
+
+# DM_R066:從 orchestrator 或 CLI 解析平台
+source(file.path(GLOBAL_DIR, "04_utils", "fn_resolve_drv_platform.R"))
+platform <- resolve_drv_platform()
+
+# 後續所有 SQL templates 以 `platform` 變數參數化
+table_name <- sprintf("df_%s_sales_complete_time_series_%s", platform, pl)
+output_table <- sprintf("df_%s_poisson_analysis_%s", platform, pl)
+# ... algorithm 內部統一使用 `platform` 變數
+dbWriteTable(con_app, sprintf("df_%s_poisson_analysis_all", platform), merged_table, overwrite = TRUE)
+```
+
+呼叫方式:
+
+```bash
+# 透過 orchestrator(優先)
+MAMBA_PLATFORM=cbz make run LAYER=drv TARGET=D04_02
+
+# 直接呼叫 + CLI flag
+Rscript shared/update_scripts/DRV/D04/D04_02.R --platform eby
+
+# 直接呼叫 + env var
+DRV_PLATFORM=amz Rscript shared/update_scripts/DRV/D04/D04_02.R
+```
+
+### 違規 — per-platform 重複檔
+
+```r
+# shared/update_scripts/DRV/cbz/cbz_D04_02.R   ← 檔名含平台
+#####
+# PLATFORM: cbz                                ← Header 標籤含平台
+# CONSUMES: df_cbz_sales_complete_time_series  ← 註解含平台
+#####
+
+table_name <- sprintf("df_cbz_sales_complete_time_series_%s", pl)   # SQL TEMPLATE 含平台
+output_table <- sprintf("df_cbz_poisson_analysis_%s", pl)             # SQL TEMPLATE 含平台
+platform_id = "cbz"                                                   # LITERAL 含平台
+dbWriteTable(con_app, "df_cbz_poisson_analysis_all", merged_table)   # TABLE LITERAL 含平台
+```
+
+加 eBay 需:
+
+1. 複製檔案 → `eby_D04_02.R`
+2. 跑 `sed -i 's/cbz/eby/g'`
+3. Commit 一份 200 行近重複檔
+
+加 Amazon 又重複 1-3 第三次。違反 DM_R066。
+
+### 違規 — wrapper script 的後設耦合
+
+```r
+# shared/update_scripts/DRV/update_all_platforms_poisson.R
+PLATFORMS <- c("cbz", "eby")   # 硬編碼平台清單
+
+for (platform in PLATFORMS) {
+  script_path <- sprintf("DRV/%s/%s_D04_02.R", platform, platform)   # Per-platform 路徑
+  source(script_path)
+}
+```
+
+加 `amz` 兩處都要改:
+
+1. 加 `"amz"` 到 `PLATFORMS` 清單
+2. 寫 `amz_D04_02.R`
+
+兩處修改 + N 份近重複檔。本 wrapper script SHALL 依 DM_R066 刪除 — `_targets.R` 的 orchestrator iteration(`for (platform in platforms)`)已用宣告式方式覆蓋此 iteration 需求。
+
+## 遷移路徑
+
+將既有 per-platform DRV group 重構至 DM_R066:
+
+1. **稽核階段**:grep 列出 `<plat>_<group>_<seq>.R` 內所有平台 literal(檔名 + headers + SQL + table writes)
+2. **試點階段**:挑一個 DRV group(如 D04)→ 把 `cbz_D04_02.R` + `eby_D04_02.R` 合併成單一 `D04/D04_02.R`
+3. **Helper 抽出**:在 `04_utils/` 實作一次 `resolve_drv_platform()`
+4. **Orchestrator 階段**:修 `_targets.R` `resolve_script_path()`,先試 group-based 路徑(`DRV/D04/D04_02.R`),再 fallback 至 per-platform 路徑
+5. **刪除 legacy**:`git rm` per-platform 檔 + `update_all_platforms_poisson.R`(如適用)
+6. **跨公司驗證**:對每家消費公司跑 `make verify-drv` 確認逐位元相同輸出
+7. **遞推**:在 D01、D03、D05 等 group 經過 per-platform 變異稽核後,逐一套用相同模式
+
+本變更(issue #670)建立規則並在 D04 demonstrate 模式。其他 DRV groups 在後續 spectra change 內延伸本規則。
+
+## 反模式總覽
+
+| 反模式 | 為何違反 DM_R066 |
+|---|---|
+| 檔名 `<plat>_<group>_<seq>.R` | 平台識別 baked 進 filesystem 結構 |
+| `# PLATFORM: cbz` header | 平台識別在原始碼註解內,飄移目標 |
+| `sprintf("df_cbz_%s", ...)` | SQL template 嵌平台 literal |
+| `platform = "cbz"` 引數預設值 | Function signature 暗示單一平台用途 |
+| `dbWriteTable(con, "df_cbz_*", ...)` | 輸出表名 literal |
+| Per-platform 子目錄 `DRV/cbz/` | Filesystem layout 編碼平台 |
+| `PLATFORMS <- c("cbz", "eby")` wrapper | 後設耦合 — 加平台需改 wrapper |
+| 跳過 helper 自己 inline `Sys.getenv("DRV_PLATFORM")` | 多處解析 = 不一致風險 |
+
+## 引用資源
+
+- **GitHub Issue**:[#670](https://github.com/kiki830621/ai_martech_global_scripts/issues/670)
+- **Spectra Change**:`dm-r066-drv-platform-agnosticism`
+- **姊妹原則**:DM_R028(ETL Data Type Separation,姊妹層級)、MP064(ETL-Derivation Separation,父原則)、MP140(Pipeline Orchestration,dispatch 機制)
+- **觸發診斷**:Issue #670 — #661 root cause 分析第三層(於 /idd-issue Step 4.7 sister sweep,2026-05-14)
+- **/spectra-discuss 結論**:[#670 comment 4444132165](https://github.com/kiki830621/ai_martech_global_scripts/issues/670#issuecomment-4444132165) — 6 design decisions 鎖定

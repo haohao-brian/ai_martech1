@@ -1,0 +1,246 @@
+---
+id: DM_R066
+title: DRV Platform Agnosticism
+subtitle: DRV scripts SHALL NOT hard-code platform names; platform identity flows from orchestrator at runtime
+type: Rule
+category: Data Management
+status: active
+related:
+  - DM_R028   # ETL Data Type Separation (sibling — ETL prescribes per-platform naming; DM_R066 proscribes the same for DRV)
+  - DM_R042   # Makefile Command Reference (orchestrator's make verify-drv invokes DRV scripts via this rule's env-var contract)
+  - DM_R047   # Multi-Platform Data Synchronization (revised/sunset alongside this rule — its enforcement vehicle `update_all_platforms_poisson.R` is deleted)
+  - MP064     # ETL-Derivation Separation (DRV operates on canonical schema; this rule's premise that algorithm is platform-invariant)
+  - MP140     # Pipeline Orchestration (`_targets.R` iterates platforms × scripts declaratively; this rule's resolution mechanism rides that iteration)
+  - MP165     # Dashboard Presence as Pipeline Acceptance (v1.3 gate validates DRV output shape per-company; this rule simplifies that gate by uniform table naming)
+version: 1.0.0
+date-created: "2026-05-14"
+author: "Claude (spectra change dm-r066-drv-platform-agnosticism, GitHub issue #670)"
+law: Data Management
+article-number: Rule 66
+parent_principle: MP064
+triggered_by: "Issue #670 — surfaced during #668 (MP165 v1.3) close-out conversation. Third layer of #661 root cause analysis: adding a platform to DRV requires writing a near-100% duplicate `<platform>_<group>_<seq>.R` file, compounded by hard-coded `PLATFORMS` list in `update_all_platforms_poisson.R`."
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+---
+
+# DM_R066: DRV Platform Agnosticism {#overview}
+
+## Rule
+
+DRV scripts in `shared/update_scripts/DRV/**/*.R` **SHALL NOT** embed platform identifiers (`cbz`, `amz`, `eby`, `shp`, `tiktok`, etc.) in:
+
+- Filenames
+- Directory paths (`DRV/cbz/`, `DRV/eby/`)
+- Header `# PLATFORM: <platform>` tags
+- SQL templates (`sprintf("df_cbz_%s", ...)`)
+- Output table literals (`dbWriteTable(con, "df_eby_poisson_analysis_all", ...)`)
+- Any other surface that becomes a structural feature of the script
+
+Platform identity SHALL flow from runtime configuration via:
+
+1. **`Sys.getenv("DRV_PLATFORM")`** — primary mechanism (orchestrator path)
+2. **`Sys.getenv("MAMBA_PLATFORM")`** — fallback (existing orchestrator env var, backward compat)
+3. **`--platform <code>` CLI flag** — last resort (direct `Rscript` invocation)
+
+If all three resolution sources are unset or empty, the script SHALL fail-fast via `stop()` with a structured error naming the script and listing the three sources tried.
+
+## Rationale
+
+The ETL layer (`{platform}_ETL_{datatype}_{phase}.R` per DM_R028) legitimately differs per platform because source schemas truly diverge (Cyberbiz JSON vs Amazon ASIN vs eBay GTIN — different parsers needed). The DRV layer operates on canonical schema (`canonical → canonical`); the algorithm is platform-invariant.
+
+Per-platform DRV files (e.g., `cbz_D04_02.R` and `eby_D04_02.R` differing only by `s/cbz/eby/g`) produce pure naming duplication with no algorithmic justification. The duplication compounds multiplicatively as platforms × DRV groups grow.
+
+**De-facto extension of DM_R028 into DRV** is convention drift — DM_R028's `_ETL_` token in the naming pattern signals ETL-only intent. DM_R066 makes the boundary explicit and prescribes the resolution mechanism for the DRV layer.
+
+## Scope
+
+| Layer | Naming Rule | Hard-coding Allowed? |
+|---|---|---|
+| ETL | DM_R028: `{platform}_ETL_{datatype}_{phase}.R` | YES — per-platform parsers, source schemas diverge |
+| **DRV** | **DM_R066: platform-agnostic at filename + content** | **NO — algorithm operates on canonical schema** |
+| Application (Shiny) | UI per-company config | Platform list driven by config, not literals |
+
+DM_R066 applies universally to all DRV groups (D01-D11) and all 5 consuming companies (QEF_DESIGN / D_RACING / MAMBA / WISER / kitchenMAMA).
+
+## Required Resolution Mechanism
+
+DRV scripts SHALL call a `resolve_drv_platform()` helper (or equivalent inline logic) at script startup:
+
+```r
+resolve_drv_platform <- function(args = commandArgs(trailingOnly = TRUE)) {
+  # 1. DRV_PLATFORM env var (primary)
+  platform <- Sys.getenv("DRV_PLATFORM", unset = "")
+
+  # 2. MAMBA_PLATFORM env var (fallback — orchestrator backward compat)
+  if (!nzchar(platform)) {
+    platform <- Sys.getenv("MAMBA_PLATFORM", unset = "")
+  }
+
+  # 3. --platform <code> CLI flag (last resort)
+  if (!nzchar(platform)) {
+    idx <- which(args == "--platform")
+    if (length(idx) == 1L && idx < length(args)) {
+      platform <- args[[idx + 1L]]
+    }
+  }
+
+  if (!nzchar(platform)) {
+    stop(
+      "DM_R066 violation: platform unresolved for ", basename(sys.frame(1)$ofile %||% "<script>"),
+      "\n  Resolution sources tried (in order): DRV_PLATFORM env var, MAMBA_PLATFORM env var, --platform CLI flag",
+      "\n  Set one of them or invoke via the orchestrator (make run)."
+    )
+  }
+
+  # Validate against active platforms (rejects typos)
+  active <- names(get_platform_config())
+  if (!platform %in% active) {
+    stop(
+      "DM_R066 violation: platform '", platform, "' not in active config.",
+      "\n  Valid platforms: ", paste(active, collapse = ", ")
+    )
+  }
+
+  platform
+}
+```
+
+The helper SHALL be the single point of platform resolution per script — no inline `Sys.getenv()` reads scattered through SQL templates.
+
+## Files Bound
+
+This rule binds:
+
+- `shared/update_scripts/DRV/**/*.R` — all DRV scripts SHALL NOT contain platform-name literals outside an explicit `valid_platforms` whitelist constant
+- `shared/update_scripts/_targets.R` — orchestrator dispatch SHALL resolve group-based paths (`DRV/D04/D04_02.R`) before per-platform paths (`DRV/cbz/cbz_D04_02.R`)
+- `shared/global_scripts/04_utils/fn_resolve_drv_platform.R` (or equivalent) — helper that implements the 3-tier resolution chain
+- `shared/global_scripts/00_principles/docs/en/part1_principles/CH02_data_management/rules/DM_R028_etl_data_type_separation.qmd` — amended with scope-clarification clause cross-referencing DM_R066
+
+Triple-layer sync (per DOC_R009):
+
+- Layer 1 (.qmd): this file + zh mirror
+- Layer 2 (`llm/CH02_data.yaml`): DM_R066 entry with normative content + Layer 2 rule_natural sub-rules
+- Layer 3 (`.claude/rules/01-always.md`): MP/DM_R/DEV_R quick reference section mentions DM_R066
+
+## Examples
+
+### Compliant — single platform-agnostic script
+
+```r
+# shared/update_scripts/DRV/D04/D04_02.R
+#####
+# DERIVATION: D04_02 Poisson Analysis (cross-platform)
+# GROUP: D04
+# SEQUENCE: 02
+# PURPOSE: Per-platform Poisson regression of sales over predictor features
+# CORE_FUNCTION: in-line (no separate fn_*_core.R)
+# CONSUMES: df_{platform}_sales_complete_time_series_{product_line}
+# PRODUCES: df_{platform}_poisson_analysis_{product_line}, df_{platform}_poisson_analysis_all
+#####
+
+source(file.path("scripts", "global_scripts", "22_initializations", "sc_Rprofile.R"))
+autoinit()
+
+# DM_R066: resolve platform from orchestrator or CLI
+source(file.path(GLOBAL_DIR, "04_utils", "fn_resolve_drv_platform.R"))
+platform <- resolve_drv_platform()
+
+# All subsequent SQL templates parameterize on `platform`
+table_name <- sprintf("df_%s_sales_complete_time_series_%s", platform, pl)
+output_table <- sprintf("df_%s_poisson_analysis_%s", platform, pl)
+# ... rest of algorithm uses `platform` variable throughout
+dbWriteTable(con_app, sprintf("df_%s_poisson_analysis_all", platform), merged_table, overwrite = TRUE)
+```
+
+Invocation:
+
+```bash
+# Via orchestrator (preferred)
+MAMBA_PLATFORM=cbz make run LAYER=drv TARGET=D04_02
+
+# Direct invocation with CLI flag
+Rscript shared/update_scripts/DRV/D04/D04_02.R --platform eby
+
+# Direct invocation with env var
+DRV_PLATFORM=amz Rscript shared/update_scripts/DRV/D04/D04_02.R
+```
+
+### Violating — per-platform duplicate
+
+```r
+# shared/update_scripts/DRV/cbz/cbz_D04_02.R   ← FILENAME contains platform
+#####
+# PLATFORM: cbz                                ← HEADER tag contains platform
+# CONSUMES: df_cbz_sales_complete_time_series  ← COMMENT contains platform
+#####
+
+table_name <- sprintf("df_cbz_sales_complete_time_series_%s", pl)   # SQL TEMPLATE contains platform
+output_table <- sprintf("df_cbz_poisson_analysis_%s", pl)             # SQL TEMPLATE contains platform
+platform_id = "cbz"                                                   # LITERAL contains platform
+dbWriteTable(con_app, "df_cbz_poisson_analysis_all", merged_table)   # TABLE LITERAL contains platform
+```
+
+Adding eBy requires:
+
+1. Copy file → `eby_D04_02.R`
+2. Run `sed -i 's/cbz/eby/g'`
+3. Commit a 200-line near-duplicate
+
+Adding Amazon repeats steps 1-3 for the third time. Violates DM_R066.
+
+### Violating — meta-coupling in wrapper script
+
+```r
+# shared/update_scripts/DRV/update_all_platforms_poisson.R
+PLATFORMS <- c("cbz", "eby")   # HARD-CODED platform list
+
+for (platform in PLATFORMS) {
+  script_path <- sprintf("DRV/%s/%s_D04_02.R", platform, platform)   # Per-platform path
+  source(script_path)
+}
+```
+
+Adding `amz` requires both:
+
+1. Add `"amz"` to `PLATFORMS` list
+2. Write `amz_D04_02.R`
+
+Two-place edit + N near-duplicate files. This wrapper script SHALL be deleted per DM_R066 — orchestrator iteration in `_targets.R` (`for (platform in platforms)`) covers the iteration declaratively.
+
+## Migration Path
+
+Refactoring an existing per-platform DRV group to DM_R066:
+
+1. **Audit phase**: grep for all platform literals in `<plat>_<group>_<seq>.R` (filename + headers + SQL + table writes)
+2. **Pilot phase**: pick one DRV group (e.g., D04) → consolidate `cbz_D04_02.R` + `eby_D04_02.R` into single `D04/D04_02.R`
+3. **Helper extraction**: implement `resolve_drv_platform()` once in `04_utils/`
+4. **Orchestrator phase**: update `_targets.R` `resolve_script_path()` to try group-based path (`DRV/D04/D04_02.R`) before per-platform path
+5. **Delete legacy**: `git rm` per-platform files + `update_all_platforms_poisson.R` (if applicable)
+6. **Cross-co verify**: byte-for-byte identical output via `make verify-drv` on each consuming company
+7. **Iterate**: extend pattern to D01, D03, D05 groups as their per-platform variation is audited
+
+This change (issue #670) establishes the principle and demonstrates the pattern on D04. Other DRV groups extend the principle in follow-up spectra changes.
+
+## Anti-Patterns Summary
+
+| Anti-pattern | Why it violates DM_R066 |
+|---|---|
+| Filename `<plat>_<group>_<seq>.R` | Platform identity baked into filesystem structure |
+| `# PLATFORM: cbz` header | Platform identity in source-code comment, drift target |
+| `sprintf("df_cbz_%s", ...)` | SQL template embeds platform literal |
+| `platform = "cbz"` argument default | Function signature implies single-platform purpose |
+| `dbWriteTable(con, "df_cbz_*", ...)` | Output table name literal |
+| Per-platform subdirectory `DRV/cbz/` | Filesystem layout encodes platform |
+| `PLATFORMS <- c("cbz", "eby")` wrapper | Meta-coupling — adding a platform requires editing the wrapper |
+| Skip resolution helper and inline `Sys.getenv("DRV_PLATFORM")` | Multiple resolution sites = inconsistency risk |
+
+## References
+
+- **GitHub Issue**: [#670](https://github.com/kiki830621/ai_martech_global_scripts/issues/670)
+- **Spectra Change**: `dm-r066-drv-platform-agnosticism`
+- **Sibling Principles**: DM_R028 (ETL Data Type Separation, sibling layer), MP064 (ETL-Derivation Separation, parent), MP140 (Pipeline Orchestration, dispatch mechanism)
+- **Triggering Diagnosis**: Issue #670 third layer of #661 root cause analysis (during /idd-issue Step 4.7 sister sweep, 2026-05-14)
+- **/spectra-discuss Conclusion**: [#670 comment 4444132165](https://github.com/kiki830621/ai_martech_global_scripts/issues/670#issuecomment-4444132165) — 6 design decisions locked

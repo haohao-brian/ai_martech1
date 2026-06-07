@@ -1,0 +1,84 @@
+# MP165 v1.3 DRV-Output Shape Contracts — QEF_DESIGN (向創設計)
+# Spectra change: mp165-drv-output-shape-gate (#668)
+#
+# Gate: shared/global_scripts/23_deployment/drv_output_shape_gate.R
+# Active platforms per app_config.yaml > pipeline > platforms: amz only
+# DRV groups: D00, D01, D03, D04, D05, D11
+#
+# Severity choices (2026-05-14 baseline):
+#   - DNA tables (D01): critical, well-populated, dashboard-blocking if empty
+#   - Macro tables (D05): critical, dashboard-blocking
+#   - Position tables (D03): critical, BrandEdge depends on them
+#   - Poisson tables (D04): WARNING for now — issue #661 has known
+#     upstream amz ETL JOIN gap producing only `time_feature` predictor_type
+#     (no comment_attribute / product_attribute). The gate SHOULD surface
+#     this gap on every run; upgrade to `critical` once #661 ships fix.
+#
+# Sunset: 2026-06-13 (per MP165 v1.3 default)
+
+company: QEF_DESIGN
+
+drv_contracts:
+
+  amz:
+
+    # --- D01: Customer DNA Analysis ---
+    df_customer_dna:
+      l2_row_count_min: 1000
+      severity: critical
+
+    df_customer_profile:
+      l2_row_count_min: 1000
+      severity: critical
+
+    df_dna_by_customer:
+      l2_row_count_min: 5000
+      severity: critical
+
+    df_dna_category_counts:
+      l2_row_count_min: 50
+      severity: critical
+
+    df_dna_plot_data:
+      l2_row_count_min: 1000
+      severity: critical
+
+    df_dna_summary_stats:
+      l2_row_count_min: 10
+      severity: critical
+
+    df_profile_by_customer:
+      l2_row_count_min: 1000
+      severity: critical
+
+    # --- D03: Positioning Analysis ---
+    df_position:
+      l2_row_count_min: 50
+      severity: critical
+
+    df_product_line_profile:
+      l2_row_count_min: 5
+      severity: critical
+
+    # --- D04: Poisson Precision Marketing ---
+    # Refs #661 + #674: upstream amz ETL JOIN gap closed in #674 — Poisson
+    # analysis now surfaces all 3 predictor_types per active QEF PL. Severity
+    # upgraded from warning → critical so any future regression that
+    # collapses back to time_feature-only output halts the gate.
+    df_amz_poisson_analysis_all:
+      l2_row_count_min: 50
+      l3_predictor_types:
+        required:
+          - time_feature
+          - comment_attribute
+          - product_attribute
+        min_count_per_type: 1
+      severity: critical
+
+    # --- D05: Macro Trend Analysis ---
+    df_macro_monthly_summary:
+      l2_row_count_min: 12
+      severity: critical
+
+# Per-company opt-in to strict-mode before sunset (default false)
+strict_mode: false

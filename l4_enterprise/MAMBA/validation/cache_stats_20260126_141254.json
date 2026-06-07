@@ -1,0 +1,26 @@
+[
+  {
+    "function_name": "load_dna_distribution_summary",
+    "hits": 2,
+    "misses": 0,
+    "total": 2,
+    "hit_rate": 1,
+    "_row": "load_dna_distribution_summary"
+  },
+  {
+    "function_name": "load_dna_category_counts",
+    "hits": 2,
+    "misses": 0,
+    "total": 2,
+    "hit_rate": 1,
+    "_row": "load_dna_category_counts"
+  },
+  {
+    "function_name": "load_customer_dropdown_options",
+    "hits": 2,
+    "misses": 0,
+    "total": 2,
+    "hit_rate": 1,
+    "_row": "load_customer_dropdown_options"
+  }
+]

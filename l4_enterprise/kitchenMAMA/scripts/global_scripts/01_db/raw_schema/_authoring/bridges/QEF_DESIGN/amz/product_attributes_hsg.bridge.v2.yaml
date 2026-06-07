@@ -1,0 +1,304 @@
+prerawdata_source:
+  company: QEF_DESIGN
+  platform: amz
+  source_type: csv
+  source_uri: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_hsg.csv
+  sheet_name: ~
+  schema_fingerprint:
+    algorithm: sha256
+    value: 3bc2d43a9c5f0206e14efc7ea8c7118733c94519cba99056cb1fa12cfb3cef30
+    fingerprinted_against: df_product_profile_hsg.csv (full read, 51 rows; canonical
+      helper)
+    fingerprinted_at: '2026-05-05T09:37:07Z'
+canonical_target:
+  datatype: product_attributes_hsg
+  platform: amz
+  table: df_amz_product_attributes_hsg___raw
+  schema_yaml_path: 01_db/raw_schema/_authoring/companies/QEF_DESIGN/product_attribute_schemas.yaml
+  platform_extension_yaml_path: 01_db/raw_schema/_authoring/platform_extensions/amz_extensions.yaml
+field_extractors:
+  brand:
+    type: column
+    name: 品牌
+  sales_platform:
+    type: column
+    name: 銷售平台
+  sku:
+    type: column
+    name: SKU
+  asin:
+    type: column
+    name: ASIN
+  product_name:
+    type: column
+    name: 商品名稱
+  rank:
+    type: column
+    name: 排名
+  is_competitor:
+    type: column
+    name: 競爭對手
+  color_lens:
+    type: column
+    name: 鏡片顏色
+  rating_no_distortion:
+    type: column
+    name: 無失真
+  rating_comfortable_wear:
+    type: column
+    name: 穿戴舒適
+  rating_durability:
+    type: column
+    name: 耐用性
+  rating_clear_vision:
+    type: column
+    name: 視野清晰
+  review_rating:
+    type: column
+    name: 評論星級
+  review_count:
+    type: column
+    name: 評論則數
+  url:
+    type: column
+    name: 網址
+  is_benchmark_product:
+    type: column
+    name: 標竿產品
+  price:
+    type: column
+    name: 價格
+  product_count:
+    type: column
+    name: 產品數量
+  color_temple:
+    type: column
+    name: 鏡腳顏色
+  material_frame:
+    type: column
+    name: 鏡框材質
+  material_lens:
+    type: column
+    name: 鏡片材質
+  material_nose_pad:
+    type: column
+    name: 鼻墊材質
+  dimension_frame_width:
+    type: column
+    name: 鏡框寬度
+  dimension_frame_max_width:
+    type: column
+    name: 鏡框最大寬度
+  dimension_frame_height:
+    type: column
+    name: 鏡框高度
+  dimension_temple_length:
+    type: column
+    name: 鏡腳長度
+  feature_polarized:
+    type: column
+    name: 偏光功能
+  feature_ventilated_temple:
+    type: column
+    name: 通風鏡腳
+  feature_bendable_temple_tip:
+    type: column
+    name: 可彎鏡腳尾端
+  feature_soft_nose_pad:
+    type: column
+    name: 柔軟鼻托
+  accessory_pouch:
+    type: column
+    name: 眼鏡袋
+  protection_uv:
+    type: column
+    name: 紫外線防護
+  protection_uv_grade_u6:
+    type: column
+    name: U6紫外線防護等級
+  feature_anti_fog:
+    type: column
+    name: 防霧功能
+  feature_anti_scratch:
+    type: column
+    name: 防刮功能
+  feature_wraparound:
+    type: column
+    name: 環繞式設計
+  feature_adjustable_nose_pad:
+    type: column
+    name: 可調整鼻墊
+  feature_lightweight_design:
+    type: column
+    name: 輕巧設計
+  feature_impact_resistant:
+    type: column
+    name: 耐衝擊
+  feature_long_duration_use:
+    type: column
+    name: 長時間使用
+  standard_ansi_z87_1:
+    type: column
+    name: ANSI.Z87.1標準
+  standard_osha:
+    type: column
+    name: OSHA標準
+  standard_csa_z94_3:
+    type: column
+    name: CSA.Z94.3標準
+  standard_en_166:
+    type: column
+    name: EN166標準
+  standard_mil_prf_32432a:
+    type: column
+    name: MIL.PRF.32432A標準
+  demographic_kids_8_10_large_face:
+    type: column
+    name: X8到10歲大臉小孩客群
+  demographic_adult_small_to_medium_face:
+    type: column
+    name: 小臉至中臉成人客群
+  demographic_unisex:
+    type: column
+    name: 適合中性
+  scene_lab:
+    type: column
+    name: 實驗室
+  activity_chemistry:
+    type: column
+    name: 化學
+  activity_law_enforcement:
+    type: column
+    name: 執法
+  user_dentist:
+    type: column
+    name: 牙醫
+  activity_cycling:
+    type: column
+    name: 自行車
+  activity_dog_walking:
+    type: column
+    name: 遛狗
+  activity_gardening:
+    type: column
+    name: 園藝
+  activity_hunting:
+    type: column
+    name: 狩獵
+  activity_woodworking:
+    type: column
+    name: 木工
+  activity_shooting:
+    type: column
+    name: 射擊
+  scene_home:
+    type: column
+    name: 居家
+  scene_school:
+    type: column
+    name: 校園
+  scene_factory:
+    type: column
+    name: 工廠
+  user_medical:
+    type: column
+    name: 醫療
+  activity_outdoor:
+    type: column
+    name: 戶外活動
+  feature_night_use:
+    type: column
+    name: 夜間使用
+  feature_sport_safety:
+    type: column
+    name: 運動安全
+  activity_airsoft:
+    type: column
+    name: 生存遊戲
+  activity_pickleball:
+    type: column
+    name: 匹克球
+  cleaning_method:
+    type: column
+    name: 清潔方式
+  feature_splash_resistant:
+    type: column
+    name: 防飛濺功能
+  accessory_lens_cloth:
+    type: column
+    name: 拭鏡布
+  activity_clay_shooting:
+    type: column
+    name: 飛碟射擊
+  accessory_case:
+    type: column
+    name: 眼鏡盒
+  accessory_head_strap:
+    type: column
+    name: 頭帶
+  accessory_ear_plug:
+    type: column
+    name: 耳塞
+unused_source_columns:
+- etl_import_timestamp
+- etl_import_source
+- etl_product_line_id
+- etl_phase
+generated_at: '2026-04-29T09:06:48Z'
+generated_by: 'gen_product_attribute_bridges.R (qef-product-master-redesign 9.6, #460)'
+refingerprint_session: 'qef-batch-bridges-ensemble-2026-05-05 (12-bridge ensemble;
+  hsg deferred to iter-2 after Layer 1 fix per #570)'
+reviewed_by:
+  human_reviewer: kiki830621
+  review_mode: glue-ensemble-v1-batch-class-inherited-then-iter2
+  ai_reviewers:
+  - codex-cli@gpt-5.5-xhigh
+  - claude-opus-4-7-correctness
+  - claude-opus-4-7-devils-advocate
+  findings_summary:
+    critical: 0
+    high: 0
+    medium: 1
+    low: 2
+    suggestions: 1
+    resolved_in_iterations: 2
+  approved_at: '2026-05-05T22:55:00Z'
+  approved_in_commit: ''
+  review_artifacts: product_attributes_hsg.bridge.review.md
+  scoping_note: '12-bridge batch class-inheritance with iter-2 deferral. Iter 1 (2026-05-05T13:00:00Z)
+    found per-bridge HIGH C2 (sales_platform NA->NULL, MP163 violation); resolved
+    at Layer 1 via #570 fallback.use_value: ''Amazon'' on companies/QEF_DESIGN/product_attribute_schemas.yaml.
+    Iter 2 mechanical proof: post-fix runtime path satisfies required-field contract
+    for the 4 affected rows. Security reviewer skipped per scoping policy (config
+    edit, no executable surface).'
+findings_resolutions:
+- finding_id: C2
+  severity: HIGH
+  description: sales_platform required:true with 4 source rows (lines 36-39) having
+    literal 'NA' string. Bridge value_map NA->~ maps to NULL. apply_mapping.R:138
+    stop() halts pipeline (MP163 violation).
+  resolution: 'fixed at Layer 1 - companies/QEF_DESIGN/product_attribute_schemas.yaml
+    now declares fallback.use_value: ''Amazon'' for sales_platform field across all
+    12 product_attribute datatypes. After Layer 1 lands, NULL post-coercion triggers
+    fallback (canonical value ''Amazon'' for amz-only bridges per MP161). Closes #570.'
+  accepted_by: kiki830621
+- finding_id: M-3
+  severity: MEDIUM
+  description: Bridge yaml previously shipped with reviewed_by REQUIRES_HUMAN_REVIEW
+    placeholder
+  resolution: fixed inline this commit - placeholder replaced with structured form
+    per MP102 v1.3
+  accepted_by: kiki830621
+- finding_id: L-1
+  severity: LOW
+  description: BOM-prefix on first column header (per blb SUGGESTION-5 systemic)
+  resolution: accepted - runtime readr handles BOM transparently; cosmetic mismatch
+    with validator only
+  accepted_by: kiki830621
+- finding_id: L-2
+  severity: LOW
+  description: Wall-clock timestamps in generated_at/fingerprinted_at break idempotence
+    checks
+  resolution: accepted - matches blb iter-2 L-15 resolution; provenance value > idempotence
+    test value
+  accepted_by: kiki830621

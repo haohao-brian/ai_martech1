@@ -1,0 +1,397 @@
+library(targets)
+library(yaml)
+
+# =============================================================================
+# MAMBA Target Pipeline (Config-Driven)
+# Implements MP142 (Configuration-Driven Pipeline) and MP108 (ETL phase order)
+# Per SO_P016: Config at Company scope (project root), scripts at Universal scope
+#
+# Directory structure:
+#   {project_root}/                        <- Company scope
+#   ├── _targets_config.yaml               <- Config file (generated from merge)
+#   └── scripts/update_scripts/            <- Universal scope (this dir)
+#       └── _targets.R                     <- This file
+# =============================================================================
+
+# Resolve project root: prefer MAMBA_PROJECT_ROOT env var (set by Makefile)
+# to avoid symlink + '..' path resolution issues. Fall back to relative path
+# for backward compatibility when invoked outside Makefile.
+project_root_env <- Sys.getenv("MAMBA_PROJECT_ROOT", "")
+if (nzchar(project_root_env) && dir.exists(project_root_env)) {
+  project_root <- project_root_env
+  pipeline_dir <- normalizePath(
+    file.path(project_root, "scripts", "update_scripts"),
+    mustWork = FALSE
+  )
+} else {
+  pipeline_dir <- "."
+  project_root <- normalizePath(file.path(pipeline_dir, "..", ".."), mustWork = FALSE)
+}
+config_path <- file.path(project_root, "_targets_config.yaml")
+
+# Environment filters (optional)
+target_platform <- Sys.getenv("MAMBA_PLATFORM", "all")
+target_script   <- Sys.getenv("MAMBA_TARGET", "")
+run_layer       <- Sys.getenv("MAMBA_LAYER", "both")    # etl | drv | both
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+script_to_target_name <- function(script_path) {
+  base <- tools::file_path_sans_ext(basename(script_path))
+  make.names(gsub("[^A-Za-z0-9_]", "_", base))
+}
+
+build_r_command <- function(full_path) {
+  # Use the already-resolved project_root (from env var or fallback)
+  # instead of re-deriving from relative path
+  rprofile_path <- normalizePath(file.path(project_root, ".Rprofile"), winslash = "/", mustWork = FALSE)
+  sc_rprofile_path <- normalizePath(
+    file.path(project_root, "scripts", "global_scripts", "22_initializations", "sc_Rprofile.R"),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  if (file.exists(rprofile_path)) {
+    init_source <- sprintf("source(%s)", shQuote(rprofile_path))
+  } else if (file.exists(sc_rprofile_path)) {
+    init_source <- sprintf("source(%s)", shQuote(sc_rprofile_path))
+  } else {
+    stop("Cannot find .Rprofile or sc_Rprofile.R for autoinit()")
+  }
+  full_path_norm <- normalizePath(full_path, winslash = "/", mustWork = FALSE)
+  # Force UPDATE_MODE for ETL/DRV orchestration.
+  # In `R --vanilla -e`, script-path detection falls back to APP_MODE.
+  expr <- sprintf("setwd(%s); OPERATION_MODE <- 'UPDATE_MODE'; %s; autoinit(); source(%s)",
+                  shQuote(project_root),
+                  init_source,
+                  shQuote(full_path_norm))
+  c("--vanilla", "-e", shQuote(expr))
+}
+
+resolve_script_path <- function(layer_dir, platform, script_path) {
+  # Explicit path (already contains /) — honor as-is
+  if (grepl("[/\\\\]", script_path)) {
+    return(file.path(layer_dir, script_path))
+  }
+
+  # DM_R066: for DRV layer, try group-based path first (refactored scripts).
+  # Pattern: "cbz_D04_02.R" → strip platform_ prefix → "D04_02.R" → extract
+  # group token "D04" → check `DRV/D04/D04_02.R` exists. Falls back to legacy
+  # per-platform path when group-based not present, preserving backward compat
+  # for non-refactored DRV groups (D01, D03, D05, etc.) and ETL layer.
+  if (basename(layer_dir) == "DRV") {
+    stripped <- sub(paste0("^", platform, "_"), "", script_path)
+    group_match <- regmatches(stripped, regexpr("^[DS][0-9]+", stripped))
+    if (length(group_match) == 1 && nzchar(group_match)) {
+      group_path <- file.path(layer_dir, group_match, stripped)
+      if (file.exists(group_path)) {
+        return(group_path)
+      }
+    }
+  }
+
+  # Legacy per-platform path (backward compat for ETL + non-refactored DRV)
+  file.path(layer_dir, platform, script_path)
+}
+
+# Refs #678: detect script self-reported Status: FAILED even when system2()
+# exit code is 0 (which happens when tryCatch absorbs the error in MAIN, sets
+# error_occurred <<- TRUE, prints SUMMARY with "Status: FAILED", then proceeds
+# to clean DEINITIALIZE so the R process exits 0). Without this check, the
+# {targets} orchestrator falsely marks the target as completed.
+check_script_log_for_failure <- function(log_file, script_path, layer) {
+  if (!file.exists(log_file)) return(invisible(NULL))
+  lines <- tryCatch(readLines(log_file, warn = FALSE), error = function(e) character(0))
+  # Match the SUMMARY block's "Status: FAILED" line (case-sensitive on FAILED).
+  # Scripts conventionally emit this as part of their PART 4 SUMMARIZE block.
+  failed_lines <- grep("Status:\\s*FAILED", lines, value = TRUE, perl = TRUE)
+  if (length(failed_lines) > 0) {
+    # Echo a tail of the log so the user sees context (the full log is
+    # captured to log_file; tail emits the last 30 lines including SUMMARY).
+    tail_n <- min(length(lines), 30L)
+    message(sprintf("\n=== %s log tail (last %d lines) ===", toupper(layer), tail_n))
+    message(paste(tail(lines, tail_n), collapse = "\n"))
+    message(sprintf("=== end %s log tail ===\n", toupper(layer)))
+    stop(sprintf(
+      "%s script self-reported Status: FAILED (%s)\n  matched line: %s\n  full log: %s",
+      toupper(layer), script_path, failed_lines[[1L]], log_file
+    ))
+  }
+  invisible(NULL)
+}
+
+# Helper: invoke `R` against a script with stdout+stderr captured to a temp
+# log file. Returns (status, log_file). Echoes log to console after so the
+# user sees the same output they would have without redirection.
+run_script_with_log <- function(r_bin, script_path, full_path, layer) {
+  log_dir <- file.path(tempdir(), "mamba_pipeline_logs")
+  if (!dir.exists(log_dir)) dir.create(log_dir, recursive = TRUE)
+  timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+  log_name <- gsub("[^A-Za-z0-9_]", "_", basename(script_path))
+  log_file <- file.path(log_dir, sprintf("%s_%s_%s.log", layer, log_name, timestamp))
+  status <- system2(r_bin, build_r_command(full_path),
+                    stdout = log_file, stderr = log_file)
+  # Echo log to console (so {targets} captures it in target output)
+  if (file.exists(log_file)) {
+    log_text <- tryCatch(readLines(log_file, warn = FALSE), error = function(e) character(0))
+    if (length(log_text) > 0) message(paste(log_text, collapse = "\n"))
+  }
+  list(status = status, log_file = log_file)
+}
+
+run_etl_script <- function(script_path, platform) {
+  full_path <- resolve_script_path(file.path(pipeline_dir, "ETL"), platform, script_path)
+  r_bin <- Sys.which("R")
+  if (r_bin == "") stop("R not found on PATH")
+  message(sprintf("[ETL:%s] %s", platform, script_path))
+  res <- run_script_with_log(r_bin, script_path, full_path, "etl")
+  if (res$status != 0) stop(sprintf("ETL failed (%s) [exit=%d]", script_path, res$status))
+  # Refs #678: catch script-self-reported FAILED even when exit=0
+  check_script_log_for_failure(res$log_file, script_path, "etl")
+  list(success = TRUE, script = script_path, platform = platform, layer = "etl")
+}
+
+run_drv_script <- function(script_path, platform) {
+  full_path <- resolve_script_path(file.path(pipeline_dir, "DRV"), platform, script_path)
+  r_bin <- Sys.which("R")
+  if (r_bin == "") stop("R not found on PATH")
+  message(sprintf("[DRV:%s] %s", platform, script_path))
+  res <- run_script_with_log(r_bin, script_path, full_path, "drv")
+  if (res$status != 0) stop(sprintf("DRV failed (%s) [exit=%d]", script_path, res$status))
+  # Refs #678: catch script-self-reported FAILED even when exit=0
+  check_script_log_for_failure(res$log_file, script_path, "drv")
+  list(success = TRUE, script = script_path, platform = platform, layer = "drv")
+}
+
+# MP165 v1.3 (#668): DRV-Layer Step 2 propagation
+# Invokes drv_output_shape_gate.R as library to verify per-company
+# <company>_drv.yaml contracts against app_data.duckdb at three levels
+# (L1 table-exists / L2 row-count-min / L3 predictor-type-distribution).
+# Mode defaults to "auto" — calendar sunset 2026-06-13 controls
+# warn-mode vs strict-mode (or per-company strict_mode: true opt-in).
+run_drv_output_shape_gate_target <- function() {
+  message(sprintf("[DRV-GATE] verify_drv_output_shape for %s", basename(project_root)))
+
+  # Locate gate script via shared/ symlink under project_root.
+  gate_script <- normalizePath(
+    file.path(project_root, "scripts", "global_scripts", "23_deployment",
+              "drv_output_shape_gate.R"),
+    mustWork = FALSE
+  )
+  if (!file.exists(gate_script)) {
+    stop(sprintf("MP165 v1.3 gate script not found: %s", gate_script))
+  }
+
+  # Source as library (suppress CLI main() entry).
+  options(drv_gate.library_mode = TRUE)
+  gate_env <- new.env(parent = globalenv())
+  source(gate_script, local = gate_env)
+
+  # Derive company code from project_root basename.
+  company <- basename(project_root)
+
+  # Default db_path = canonical app_data.duckdb under project_root.
+  db_path <- normalizePath(
+    file.path(project_root, "data", "app_data", "app_data.duckdb"),
+    mustWork = FALSE
+  )
+  if (!file.exists(db_path)) {
+    stop(sprintf("MP165 v1.3 gate: app_data.duckdb not at canonical path: %s\n",
+                 db_path),
+         "Ensure DRV pipeline completed and DM_R062 canonical paths apply.")
+  }
+
+  result <- gate_env$run_drv_output_shape_gate(
+    company = company,
+    contracts_path = NULL,  # auto-derive from company via locate_contracts_path
+    mode = "auto",
+    db_path = db_path
+  )
+
+  # Print structured report so make run log captures it
+  message(paste(result$messages, collapse = "\n"))
+  message(sprintf(
+    "[DRV-GATE] %s | Mode: %s | Critical: %d | Warnings: %d",
+    company, result$mode, result$critical_failures, result$warnings
+  ))
+
+  if (!isTRUE(result$ok)) {
+    stop(sprintf("MP165 v1.3 gate FAILED for %s (mode=%s, critical=%d)",
+                 company, result$mode, result$critical_failures))
+  }
+
+  result
+}
+
+create_command <- function(deps, call_str) {
+  if (length(deps) == 0) {
+    parse(text = call_str)[[1]]
+  } else {
+    dep_block <- paste(deps, collapse = "; ")
+    parse(text = sprintf("{%s; %s}", dep_block, call_str))[[1]]
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Build script definitions from config
+# -----------------------------------------------------------------------------
+build_definitions <- function(config, platforms) {
+  defs <- list()
+
+  add_def <- function(name, type, platform, script, deps) {
+    defs[[name]] <<- list(
+      name = name,
+      type = type,
+      platform = platform,
+      script = script,
+      deps = deps
+    )
+  }
+
+  for (platform in platforms) {
+    pc <- config$platforms[[platform]]
+    if (is.null(pc)) next
+
+    # ETL scripts
+    if (!is.null(pc$etl)) {
+      for (datatype in names(pc$etl)) {
+        dt_conf <- pc$etl[[datatype]]
+        if (is.null(dt_conf$scripts)) next
+        for (script_def in dt_conf$scripts) {
+          script_name <- script_def$script
+          target_name <- script_to_target_name(script_name)
+          deps <- character()
+          if (!is.null(script_def$depends)) {
+            deps <- vapply(script_def$depends, script_to_target_name, character(1))
+          }
+          add_def(target_name, "etl", platform, script_name, deps)
+        }
+      }
+    }
+
+    # DRV scripts
+    if (!is.null(pc$drv)) {
+      for (group_name in names(pc$drv)) {
+        group_conf <- pc$drv[[group_name]]
+        if (is.null(group_conf$scripts)) next
+        for (script_def in group_conf$scripts) {
+          script_name <- script_def$script
+          target_name <- script_to_target_name(script_name)
+          deps <- character()
+          if (!is.null(script_def$depends_etl)) {
+            deps <- c(deps, vapply(script_def$depends_etl, script_to_target_name, character(1)))
+          }
+          if (!is.null(script_def$depends_drv)) {
+            deps <- c(deps, vapply(script_def$depends_drv, script_to_target_name, character(1)))
+          }
+          add_def(target_name, "drv", platform, script_name, unique(deps))
+        }
+      }
+    }
+  }
+
+  defs
+}
+
+# -----------------------------------------------------------------------------
+# Dependency closure
+# -----------------------------------------------------------------------------
+collect_allowed <- function(defs, start_set) {
+  allowed <- character()
+  queue <- start_set
+  while (length(queue) > 0) {
+    current <- queue[[1]]
+    queue <- queue[-1]
+    if (current %in% allowed) next
+    allowed <- c(allowed, current)
+    deps <- defs[[current]]$deps
+    deps <- deps[deps %in% names(defs)]
+    queue <- c(queue, deps)
+  }
+  allowed
+}
+
+# -----------------------------------------------------------------------------
+# Main builder
+# -----------------------------------------------------------------------------
+build_targets <- function() {
+  config <- yaml::read_yaml(config_path)
+
+  if (target_platform == "all") {
+    platforms <- names(config$platforms)
+  } else {
+    requested <- strsplit(target_platform, ",")[[1]]
+    platforms <- unique(c(requested, "all"))
+    platforms <- platforms[platforms %in% names(config$platforms)]
+  }
+  defs <- build_definitions(config, platforms)
+
+  if (length(defs) == 0) {
+    stop("No targets defined for the selected platform(s).")
+  }
+
+  if (nzchar(target_script)) {
+    start <- script_to_target_name(target_script)
+    if (start %in% names(defs)) {
+      # Exact match: single target
+      start_set <- start
+    } else {
+      # Prefix match: e.g. "amz_D01" matches all "amz_D01_*" targets
+      prefix_pattern <- paste0("^", start, "_")
+      prefix_matches <- grep(prefix_pattern, names(defs), value = TRUE)
+      if (length(prefix_matches) > 0) {
+        message(sprintf("[Pipeline] TARGET=%s expanded to %d targets: %s",
+                        target_script, length(prefix_matches),
+                        paste(prefix_matches, collapse = ", ")))
+        start_set <- prefix_matches
+      } else {
+        stop(sprintf("Requested target '%s' not found (exact or prefix) in configuration", target_script))
+      }
+    }
+  } else {
+    if (run_layer == "etl") {
+      start_set <- names(defs)[vapply(defs, function(x) x$type == "etl", logical(1))]
+    } else if (run_layer == "drv") {
+      start_set <- names(defs)[vapply(defs, function(x) x$type == "drv", logical(1))]
+    } else {
+      start_set <- names(defs)
+    }
+  }
+
+  allowed <- collect_allowed(defs, start_set)
+  defs <- defs[allowed]
+
+  targets <- list()
+  for (def in defs) {
+    deps <- def$deps
+    run_call <- if (def$type == "etl") {
+      sprintf("run_etl_script(%s, %s)", shQuote(def$script), shQuote(def$platform))
+    } else {
+      sprintf("run_drv_script(%s, %s)", shQuote(def$script), shQuote(def$platform))
+    }
+    command <- create_command(deps, run_call)
+    target <- tar_target_raw(name = def$name, command = command)
+    targets <- c(targets, list(target))
+  }
+
+  # MP165 v1.3 (#668): append `verify_drv_output_shape` final target that
+  # depends on ALL DRV-type targets. Runs after all derivations complete.
+  # Skipped when run_layer == "etl" (no DRV targets in this run).
+  drv_target_names <- names(defs)[vapply(defs, function(x) x$type == "drv", logical(1))]
+  if (length(drv_target_names) > 0L) {
+    verify_command <- create_command(drv_target_names, "run_drv_output_shape_gate_target()")
+    verify_target <- tar_target_raw(
+      name = "verify_drv_output_shape",
+      command = verify_command
+    )
+    targets <- c(targets, list(verify_target))
+  }
+
+  targets
+}
+
+# -----------------------------------------------------------------------------
+# Target list
+# -----------------------------------------------------------------------------
+tar_option_set(packages = character())
+build_targets()

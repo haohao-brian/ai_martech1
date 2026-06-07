@@ -1,0 +1,298 @@
+version: '1.0'
+template_type: merged
+last_updated: '2026-05-19'
+phase_order:
+- 0IM
+- 1ST
+- 2TR
+- 3PR
+- 4CL
+- 5NM
+execution:
+  parallel_workers: 2
+  per_target_timeout_minutes: 30
+  total_pipeline_timeout_hours: 4
+  log_retention_days: 30
+platform_schema:
+  etl:
+    naming_pattern: '{platform}_ETL_{datatype}_{phase}.R'
+    directory_pattern: ETL/{platform}/
+    phases_available:
+    - 0IM
+    - 1ST
+    - 2TR
+    auto_dependency_rule: Same datatype, earlier phase
+  drv:
+    naming_pattern: '{platform}_D{group}_{seq}.R'
+    directory_pattern: DRV/{platform}/
+    groups_available:
+    - D01
+    - D03
+    - D04
+    - D05
+    auto_dependency_rule: Within group, earlier sequence
+available_platforms:
+  cbz:
+    name: Cyberbiz
+    description: Primary e-commerce platform
+  amz:
+    name: Amazon
+    description: Amazon marketplace platform
+  eby:
+    name: eBay
+    description: eBay marketplace platform
+  all:
+    name: Cross-Platform
+    description: Cross-platform aggregations
+  precision:
+    name: Precision Marketing
+    description: Precision marketing specific pipelines
+excluded_patterns:
+- '**/backup_*/**'
+- '**/archive/**'
+- '**/check_*.R'
+- '**/validate_*.R'
+- '**/generate_*.R'
+- '**/consolidate_*.R'
+- '**/rename_*.R'
+- '**/update_all_platforms_*.R'
+- '**/*_DEBUG.R'
+- '**/*_test.R'
+- '**/*_backup.R'
+scheduling:
+  default_mode: manual
+  cron_schedule: 0 2 * * 0
+  log_path: logs/
+  mode: manual
+  schedule: 0 2 * * 0
+platforms:
+  amz:
+    enabled: yes
+    drv_groups:
+    - D00
+    - D01
+    - D03
+    - D04
+    - D05
+    - D11
+    etl:
+      comment_properties:
+        phases:
+        - 0IM
+        - 1ST
+        - 2TR
+        scripts:
+        - script: amz_ETL_comment_properties_0IM.R
+          phase: 0IM
+        - script: amz_ETL_comment_properties_1ST.R
+          phase: 1ST
+          depends: amz_ETL_comment_properties_0IM
+        - script: amz_ETL_comment_properties_2TR.R
+          phase: 2TR
+          depends: amz_ETL_comment_properties_1ST
+      competitor_ids:
+        phases:
+        - 0IM
+        - 1ST
+        - 2TR
+        scripts:
+        - script: amz_ETL_competitor_ids_0IM.R
+          phase: 0IM
+        - script: amz_ETL_competitor_ids_1ST.R
+          phase: 1ST
+          depends: amz_ETL_competitor_ids_0IM
+        - script: amz_ETL_competitor_ids_2TR.R
+          phase: 2TR
+          depends: amz_ETL_competitor_ids_1ST
+      product_attributes:
+        phases: 0IM
+        scripts:
+        - script: amz_ETL_product_attributes_0IM.R
+          phase: 0IM
+      product_master:
+        phases:
+        - 1ST
+        - 2TR
+        scripts:
+        - script: amz_ETL_product_master_1ST.R
+          phase: 1ST
+        - script: amz_ETL_product_master_2TR.R
+          phase: 2TR
+          depends: amz_ETL_product_master_1ST
+      product_profiles:
+        phases:
+        - 0IM
+        - 1ST
+        - 2TR
+        scripts:
+        - script: amz_ETL_product_profiles_0IM.R
+          phase: 0IM
+        - script: amz_ETL_product_profiles_1ST.R
+          phase: 1ST
+          depends: amz_ETL_product_profiles_0IM
+        - script: amz_ETL_product_profiles_2TR.R
+          phase: 2TR
+          depends: amz_ETL_product_profiles_1ST
+      reviews:
+        phases:
+        - 0IM
+        - 1ST
+        - 2TR
+        scripts:
+        - script: amz_ETL_reviews_0IM.R
+          phase: 0IM
+        - script: amz_ETL_reviews_1ST.R
+          phase: 1ST
+          depends: amz_ETL_reviews_0IM
+        - script: amz_ETL_reviews_2TR.R
+          phase: 2TR
+          depends: amz_ETL_reviews_1ST
+      sales:
+        phases:
+        - 1ST
+        - 2TR
+        scripts:
+        - script: amz_ETL_sales_1ST.R
+          phase: 1ST
+        - script: amz_ETL_sales_2TR.R
+          phase: 2TR
+          depends: amz_ETL_sales_1ST
+        - script: amz_ETL_sales_2TS.R
+          phase: 2TS
+          depends: amz_ETL_sales_2TR
+      sales_time_series:
+        phases: 2TR
+        scripts:
+        - script: amz_ETL_sales_time_series_2TR.R
+          phase: 2TR
+    drv:
+      D01:
+        description: D01 Derivations
+        scripts:
+        - script: amz_D01_00.R
+          depends_etl: amz_ETL_sales_2TS
+        - script: amz_D01_01.R
+          depends_drv: amz_D01_00
+        - script: amz_D01_02.R
+          depends_drv: amz_D01_01
+        - script: amz_D01_03.R
+          depends_drv: amz_D01_02
+        - script: amz_D01_04.R
+          depends_drv: amz_D01_03
+        - script: amz_D01_05.R
+          depends_drv: amz_D01_04
+        - script: amz_D01_06.R
+          depends_drv: amz_D01_05
+      D03:
+        description: D03 Derivations
+        scripts:
+        - script: amz_D03_00.R
+        - script: amz_D03_06.R
+          depends_drv: amz_D03_00
+        - script: amz_D03_07.R
+          depends_drv: amz_D03_06
+        - script: amz_D03_08.R
+          depends_drv: amz_D03_07
+        - script: amz_D03_09.R
+          depends_drv: amz_D03_08
+        - script: amz_D03_10.R
+          depends_drv: amz_D03_09
+        - script: amz_D03_11.R
+          depends_drv: amz_D03_10
+      D04:
+        description: D04 Derivations
+        scripts:
+        - script: amz_D04_01.R
+        - script: amz_D04_02.R
+          depends_drv: amz_D04_01
+      D05:
+        description: D05 Derivations
+        scripts:
+        - script: amz_D05_01.R
+      D11:
+        description: D11 Derivations
+        scripts:
+        - script: amz_D11_01.R
+  all:
+    enabled: yes
+    depends_on_platforms: amz
+    drv_groups:
+    - D01
+    - D03
+    - D04
+    etl:
+      item_profile:
+        phases:
+        - 0IM
+        - 1ST
+        - 2TR
+        scripts:
+        - script: all_ETL_item_profile_0IM.R
+          phase: 0IM
+        - script: all_ETL_item_profile_1ST.R
+          phase: 1ST
+          depends: all_ETL_item_profile_0IM
+        - script: all_ETL_item_profile_2TR.R
+          phase: 2TR
+          depends: all_ETL_item_profile_1ST
+      meta_init:
+        phases: 0IM
+        scripts:
+        - script: all_ETL_meta_init_0IM.R
+          phase: 0IM
+      metadata:
+        phases: 0IM
+        scripts:
+        - script: all_ETL_metadata_0IM.R
+          phase: 0IM
+      metadata_turbo:
+        phases: 0IM
+        scripts:
+        - script: all_ETL_metadata_turbo_0IM.R
+          phase: 0IM
+      summary:
+        phases:
+        - 0IM
+        - 1ST
+        - 2TR
+        scripts:
+        - script: all_ETL_summary_0IM.R
+          phase: 0IM
+        - script: all_ETL_summary_1ST.R
+          phase: 1ST
+          depends: all_ETL_summary_0IM
+        - script: all_ETL_summary_2TR.R
+          phase: 2TR
+          depends: all_ETL_summary_1ST
+    drv:
+      D01:
+        description: D01 Derivations
+        scripts:
+        - script: all_D01_07.R
+          depends_drv: amz_D01_06
+        - script: all_D01_08.R
+          depends_drv: all_D01_07
+      D03:
+        description: D03 Derivations
+        scripts:
+        - script: all_D03_01.R
+          depends_etl: amz_ETL_sales_2TS
+      D04:
+        description: D04 Derivations
+        scripts:
+        - script: all_D04_04.R
+        - script: all_D04_05.R
+          depends_drv: all_D04_04
+        - script: all_D04_06.R
+          depends_drv: all_D04_05
+        - script: all_D04_07.R
+          depends_drv: all_D04_06
+        - script: all_D04_08.R
+          depends_drv: all_D04_07
+        - script: all_D04_09.R
+          depends_drv: all_D04_08
+  precision:
+    enabled: no
+source:
+  base: /Users/che/Library/CloudStorage/Dropbox/che_workspace/projects/ai_martech/l4_enterprise/shared/global_scripts/21_rshinyapp_templates/config/_targets_config.base.yaml
+  override: /Users/che/Library/CloudStorage/Dropbox/che_workspace/projects/ai_martech/l4_enterprise/QEF_DESIGN/app_config.yaml

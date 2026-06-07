@@ -1,0 +1,686 @@
+# CH06: Integration & Collaboration
+# Version Control and Synchronization Principles
+# Last updated: 2026-05-03
+
+chapter: "CH06_ic"
+description: "Integration & Collaboration - Version Control Synchronization"
+principle_count: 8
+
+principles:
+  # ============================================================================
+  # IC_P001: Universal Immediate Sync Principle
+  # ============================================================================
+  - id: IC_P001
+    type: principle
+    name: universal_immediate_sync
+    display_name: "Universal Immediate Sync Principle"
+    one_liner: "Every completed feature → commit → pull → push"
+    implements: MP014
+    scope: "all repositories"
+    file_path: "CH06_integration_collaboration/principles/IC_P001_universal_immediate_sync.qmd"
+
+    rule_natural: |
+      Every completed feature or logical unit of work must be immediately
+      synchronized with the remote repository through a commit → pull → push
+      workflow. No batch commits, no end-of-day pushes, no "I'll push later".
+
+    rule_formal: |
+      RULE IC_P001_universal_immediate_sync:
+        WHEN feature_completed(F) OR logical_unit_done(U)
+        THEN MUST execute_sync_workflow(commit, pull, push)
+        WITHIN minutes_of_completion
+
+      PROHIBITED:
+        - batch_commits
+        - end_of_day_pushes
+        - local_only_work
+        - deferred_push
+
+    violations:
+      - "Committing multiple features in one batch at end of day"
+      - "Working locally without pushing for hours"
+      - "Saying 'I'll push later' and forgetting"
+      - "Accumulating changes without syncing"
+    compliant:
+      - "git add <files> && git commit -m '[TYPE] desc' && git pull && git push"
+      - "Committing immediately after completing a function"
+      - "Pushing after every logical change"
+      - "cd shared/global_scripts && git add && git commit && git pull && git push"
+
+    shared_symlink_note: |
+      With the shared symlink architecture (MP122), global_scripts is a standalone
+      git repo in shared/. Use standard git workflow: cd shared/global_scripts &&
+      git commit && git push. No git-subrepo dependency required.
+
+  # ============================================================================
+  # IC_P002: Cross-Company Verification Principle
+  # ============================================================================
+  - id: IC_P002
+    type: principle
+    name: cross_company_verification
+    display_name: "Cross-Company Verification Principle"
+    one_liner: "Shared subrepo change must be verified against all consuming companies before commit"
+    implements: MP122
+    related: [IC_P001, IC_R001, IC_R006, MP029, TD_P002, TD_R007]
+    triggered_by: "Issue #403, #457"
+    scope: "all shared subrepos (global_scripts, update_scripts, nsql, config, handbook)"
+    file_path: "CH06_integration_collaboration/principles/IC_P002_cross_company_verification.qmd"
+
+    rule_natural: |
+      Any change to a file under a shared git subrepo must be verified against
+      every consuming company project before commit. Verification covers both
+      applicability (the change makes semantic sense per consumer) and absence
+      of side effects (no silent regression in other companies). The commit
+      message must record a "Verified:" trailer listing tested companies.
+
+    rule_formal: |
+      RULE IC_P002_cross_company_verification:
+        WHEN file_changed(F) AND F IN shared_subrepo_paths
+        THEN MUST execute_verification_protocol:
+          STEP 1: consumers = identify_consumers(F)
+          STEP 2: FOREACH C IN consumers: semantic_review(C, F)
+          STEP 3: representative_verification(consumers, risk_level(F))
+          STEP 4: commit_message MUST_CONTAIN "Verified:" trailer
+
+      PROHIBITED:
+        - committing shared change tested only against the triggering company
+        - silent assumption of cross-company applicability
+        - commit message missing Verified: trailer for shared-code changes
+
+      EXCEPTIONS:
+        - documentation_only_changes (semantic review only, no smoke test)
+        - emergency_hotfix (must document "Verified: pending" + followup issue)
+        - explicit_n_a (companies clearly out of scope; must state rationale)
+
+    violations:
+      - "Commit brand_idx fix after testing only QEF_DESIGN, without checking D_RACING sheet layout"
+      - "Add utility function assuming QEF-specific rawdata path, no check of other companies"
+      - "Modify ETL schema with new required column, verify only QEF rawdata has it"
+      - "Commit message lacks Verified: trailer for change under shared/global_scripts/"
+
+    compliant:
+      - "Read QEF + D_RACING Google Sheet headers before brand_idx fix, confirm isomorphic layout, commit with 'Verified: QEF_DESIGN, D_RACING' trailer"
+      - "grep -rln my_new_component shared confirms only MAMBA consumes; document 'Verified: MAMBA (only consumer)'"
+      - "ETL schema change: run make run PLATFORM=amz on QEF and D_RACING fixtures; attach summary in commit trailer"
+      - "Platform-specific change: omit companies without active platform, write 'N/A: MAMBA, WISER (no active amz)'"
+
+    verification_protocol:
+      step_1_identify_consumers: |
+        grep -rln "$BASENAME" {QEF_DESIGN,D_RACING,MAMBA,WISER,kitchenMAMA}/scripts/
+      step_2_semantic_review: |
+        Per consumer: does it use this code path? does its input data match the new assumptions?
+      step_3_representative_verification: |
+        Low risk (docstring): semantic review only
+        Medium risk (utility, component): smoke test 1 company per consumption pattern
+        High risk (ETL, DRV, schema): full pipeline + output sanity check for >=2 companies
+      step_4_record_verification: |
+        Commit trailer: "Verified: <company list> - <method summary>"
+
+    enforcement:
+      current: "manual checklist; agents read this principle via .claude/rules/"
+      planned_phase_2: "Claude Code PreToolUse hook on Edit/Write in shared/; pre-commit git hook requiring Verified: trailer"
+      planned_phase_3: "CI matrix job running smoke tests across all companies' fixtures"
+
+  # ============================================================================
+  # IC_R001: Global Scripts Synchronization Rule
+  # ============================================================================
+  - id: IC_R001
+    type: rule
+    name: global_scripts_synchronization
+    display_name: "Global Scripts Synchronization Rule"
+    one_liner: "Strict immediate sync specifically for global_scripts shared repo"
+    implements: IC_P001
+    scope: "global_scripts shared repo"
+    file_path: "CH06_integration_collaboration/rules/IC_R001_global_scripts_synchronization.qmd"
+
+    rule_natural: |
+      The global_scripts shared repo requires STRICT immediate synchronization
+      because it is shared across multiple projects via symlinks. Any delay in syncing
+      can cause version conflicts and inconsistencies across dependent projects.
+
+    rule_formal: |
+      RULE IC_R001_global_scripts_sync:
+        EXTENDS IC_P001
+        APPLIES_TO global_scripts_shared_repo
+        STRICTNESS elevated
+
+      ADDITIONAL_REQUIREMENTS:
+        - sync_before_switching_projects
+        - verify_no_uncommitted_changes
+        - check_shared_repo_status_daily
+
+    violations:
+      - "Making changes to global_scripts without immediate push"
+      - "Switching to another project with uncommitted global_scripts changes"
+      - "Having local-only global_scripts modifications overnight"
+
+    compliant:
+      - "cd shared/global_scripts && git add . && git commit -m '[FIX] ...' && git pull && git push"
+      - "Checking global_scripts status before ending work session"
+      - "For tracked issues: GitHub issue → branch → PR → merge"
+
+    shared_symlink_note: |
+      With the shared symlink architecture (MP122), global_scripts is a standalone
+      git repo in shared/. Normal changes use direct push workflow. Issue/PR workflow
+      is only for specific tracked bugs/issues needing formal review.
+
+  # ============================================================================
+  # IC_R007: GitHub Issue Attachment Workflow
+  # ============================================================================
+  - id: IC_R007
+    type: rule
+    name: github_issue_attachments
+    display_name: "GitHub Issue Attachment Workflow"
+    one_liner: "Upload attachments to Release assets, reference via download URL"
+    implements: MP029
+    scope: "all private repositories"
+    file_path: "CH06_integration_collaboration/rules/IC_R007_github_issue_attachments.qmd"
+
+    rule_natural: |
+      All issue attachments (screenshots, diagrams, documents) in private repositories
+      MUST be uploaded to the 'attachments' Release and referenced via the release
+      download URL. Private repo raw URLs require auth tokens that expire, making them
+      unreliable. Release assets are accessible to anyone with repo read access.
+
+    rule_formal: |
+      RULE IC_R007_github_issue_attachments:
+        WHEN attaching_file_to_issue(F, I) AND repo_is_private(R)
+        THEN MUST upload_to_release("attachments", F)
+        AND reference_via_release_url(F, I)
+
+      SETUP (one-time per repo):
+        gh release create attachments --title "Issue Attachments"
+
+      UPLOAD:
+        gh release upload attachments <file> --clobber
+
+      NAMING:
+        filename MUST match pattern: issue_{number}_{description}.{ext}
+
+      REFERENCE:
+        ![desc](https://github.com/{owner}/{repo}/releases/download/attachments/{filename})
+
+    violations:
+      - "Using raw.githubusercontent.com URLs in private repo issues"
+      - "Embedding images without uploading to release first"
+      - "Using non-standard filename patterns for attachments"
+      - "Uploading attachments without issue number prefix"
+
+    compliant:
+      - "gh release upload attachments issue_147_screenshot.png --clobber"
+      - "Referencing via https://github.com/.../releases/download/attachments/issue_147_screenshot.png"
+      - "Using naming pattern issue_{number}_{description}.{ext}"
+
+  # ============================================================================
+  # IC_R008: GitHub Issue Scope Governance Rule
+  # ============================================================================
+  - id: IC_R008
+    type: rule
+    name: github_issue_scope_governance
+    display_name: "GitHub Issue Scope Governance Rule"
+    one_liner: "Create every issue in global_scripts and classify with scope labels"
+    implements: MP012
+    scope: "all issue tracking"
+    file_path: "CH06_integration_collaboration/rules/IC_R008_github_issue_scope_governance.qmd"
+
+    rule_natural: |
+      All issues must be created in kiki830621/ai_martech_global_scripts and labeled
+      with company:<COMPANY_CODE> or module:<ModuleName> for correct routing and
+      board mapping. Local changelog/issues/ directories are legacy only.
+
+    rule_formal: |
+      RULE IC_R008_github_issue_scope_governance:
+        WHEN creating_issue(I)
+        THEN MUST create_in_repo("kiki830621/ai_martech_global_scripts")
+        AND MUST label_with_scope(company OR module)
+
+    violations:
+      - "Creating local issue files in changelog/issues/"
+      - "Creating issues without scope labels"
+      - "Using project:* or app:* labels instead of company:* or module:*"
+
+    compliant:
+      - "gh issue create --label 'company:D_RACING' ..."
+      - "Adding issue to matching company project board after creation"
+
+  # ============================================================================
+  # IC_R009: Bidirectional Commit-Issue Traceability Rule
+  # ============================================================================
+  - id: IC_R009
+    type: rule
+    name: bidirectional_commit_issue_traceability
+    display_name: "Bidirectional Commit-Issue Traceability Rule"
+    one_liner: "Every commit references an issue; every issue has a resolving commit"
+    implements: MP012
+    scope: "all repositories"
+    file_path: "CH06_integration_collaboration/rules/IC_R009_bidirectional_commit_issue_traceability.qmd"
+
+    rule_natural: |
+      Every Git commit MUST reference at least one GitHub Issue number in its message.
+      Every GitHub Issue MUST have at least one commit that addresses it before closing.
+      There are NO EXCEPTIONS — even single-line typo fixes require a corresponding issue.
+      This ensures complete bidirectional traceability between decisions and implementations.
+
+    rule_formal: |
+      RULE IC_R009_bidirectional_commit_issue_traceability:
+        WHEN committing(C)
+        THEN MUST reference_issue(C, at_least_one_issue_number)
+
+        WHEN closing_issue(I)
+        THEN MUST have_commit(I, at_least_one_commit)
+
+      NO_EXCEPTIONS:
+        - typo_fixes REQUIRE issue
+        - minor_corrections REQUIRE issue
+        - small_improvements REQUIRE issue
+
+      BATCH_ALLOWED:
+        - multiple_small_fixes MAY share single housekeeping issue
+
+    violations:
+      - "Committing without any issue reference in message"
+      - "Closing an issue without a corresponding commit"
+      - "Saying 'this is too small for an issue'"
+
+    compliant:
+      - "git commit -m '[FIX] Correct typo (#301)' and Closes #301"
+      - "Creating lightweight issue for small fix before committing"
+      - "Batch housekeeping issue covering multiple minor fixes"
+
+  # ============================================================================
+  # IC_R010: Issue Source Confidence Triage Rule
+  # ============================================================================
+  - id: IC_R010
+    type: rule
+    name: issue_source_confidence_triage
+    display_name: "Issue Source Confidence Triage Rule"
+    one_liner: "Route issues to milestone vs project based on source-confidence × team-commitment 3D taxonomy (Type × Confidence × Schedule)"
+    parent_principle: IC_R009
+    related: [IC_R007, IC_R008, IC_R009, MP155, DOC_R009]
+    triggered_by: "Issue #509 (2026-05-02) — `向創建議_20260411` milestone mixed customer-reflected P1 issues (#412 / #401) with 老師 academic theory expansion (#406 / #407 / #409 / #410 / #411 / #419 referencing Keller / Holt / Kapferer / Sinek / Ansoff). Engineers wasted 2-5 hr designing exploratory work. Customers couldn't distinguish 'client-reported resolved' from 'internal research expansion shipped'."
+    scope: "GitHub issue management workflow + idd-issue / idd-diagnose plugin skills + repo-level GitHub artifacts (labels / milestones / projects)"
+    file_path: "CH06_integration_collaboration/rules/IC_R010_issue_source_confidence_triage.qmd"
+    version: "1.0"
+    date_created: "2026-05-02"
+
+    rule_natural: |
+      Every GitHub issue created via idd-issue (or modified via idd-diagnose) SHALL
+      carry exactly one confidence:* label drawn from:
+        - confidence:confirmed   — stakeholder-facing reflection with verifiable evidence
+        - confidence:vague       — source mentions issue but specific form ambiguous
+        - confidence:exploratory — internal exploration / brainstorm / theoretical
+
+      Routing follows 3D taxonomy:
+        Axis 1 (Type, existing):     bug / enhancement / refactor / documentation
+        Axis 2 (Confidence, NEW):    confirmed / vague / exploratory
+        Axis 3 (Schedule, NEW):      active sprint milestone / Future Planning milestone / no milestone
+
+      Type, Confidence, Schedule are orthogonal. A single issue MAY carry labels
+      across all axes simultaneously (e.g., bug + priority:P1 + company:QEF_DESIGN
+      + confidence:confirmed).
+
+      Five canonical destinations:
+        - confidence:confirmed   → source-doc milestone + Company project + Module project
+        - confidence:vague       → source-doc milestone + needs:scope-clarification + Company project
+        - exploratory + considering    → Lab project (Considering column) ONLY (no milestone)
+        - exploratory + committed-future → Future Planning milestone + Lab project (Future Planning column)
+
+      Future Planning is a single repo-wide singleton milestone with no due date.
+      Lab projects (e.g., Marketing Theory Lab) follow standard 4-column structure:
+      Considering / Future Planning / In Progress / Done.
+
+      State machine transitions:
+        - exploratory + Lab only ──[team commits eventually]──→ + Future Planning milestone
+        - exploratory + Lab only ──[drop / wontfix]──→ close
+        - vague ──[clarify with stakeholder]──→ confidence:confirmed
+        - vague ──[downgrade after review]──→ confidence:exploratory
+        - confirmed ──[customer satisfaction / verify pass]──→ close
+
+      Plugin step integration:
+        - idd-issue Step 4.4 (Source Confidence Triage) — predicate: document source + 2+ issues
+        - idd-diagnose Step 3.4 (Re-evaluate Source Confidence) — predicate: issue has confidence label
+
+      Both steps SHALL be advisory (suggest + AskUserQuestion); user override always wins.
+      Heuristic SHALL use keyword regex patterns documented in plugin source repo.
+
+    rule_formal: |
+      RULE IC_R010_issue_source_confidence_triage:
+
+      INVARIANT 1 (label completeness):
+        FORALL issue I created via idd-issue OR diagnosed via idd-diagnose:
+          REQUIRE: I.labels contains exactly one of {confidence:confirmed, confidence:vague, confidence:exploratory}
+
+      INVARIANT 2 (orthogonality):
+        FORALL issue I:
+          confidence:* labels coexist additively with type / priority / company / module / source labels
+          FORBID: requiring confidence to be mutually exclusive with type label families
+
+      INVARIANT 3 (routing per confidence):
+        FORALL issue I where confidence == confirmed:
+          REQUIRE: I.milestone == active_source_doc_milestone (e.g., 向創建議_20260411)
+          REQUIRE: I.projects contains applicable Company project
+        FORALL issue I where confidence == vague:
+          REQUIRE: I.milestone == active_source_doc_milestone
+          REQUIRE: I.labels contains needs:scope-clarification
+        FORALL issue I where confidence == exploratory AND schedule == considering:
+          REQUIRE: I.milestone == NULL
+          REQUIRE: I.projects contains applicable Lab project (Considering column)
+        FORALL issue I where confidence == exploratory AND schedule == committed-future:
+          REQUIRE: I.milestone == "Future Planning"
+          REQUIRE: I.projects contains applicable Lab project (Future Planning column)
+
+      INVARIANT 4 (Future Planning singleton):
+        REQUIRE: at most one milestone named "Future Planning" exists per repo
+        REQUIRE: Future Planning milestone has no due date
+
+      INVARIANT 5 (Lab project structure):
+        FORALL project P matching naming pattern "* Lab":
+          REQUIRE: P.columns = [Considering, Future Planning, In Progress, Done]
+          REQUIRE: column transitions triggered by milestone changes (not manual drag-only)
+
+      INVARIANT 6 (state machine closure):
+        FORALL transition T in issue lifecycle:
+          REQUIRE: T is one of {commit-future, drop, clarify, downgrade, close-confirmed}
+          FORBID: transitions outside this state machine without amending IC_R010
+
+      INVARIANT 7 (plugin advisory):
+        FORALL invocation of idd-issue Step 4.4 OR idd-diagnose Step 3.4:
+          REQUIRE: heuristic produces suggestion only
+          REQUIRE: user confirmation via AskUserQuestion before applying label
+          FORBID: silent classification
+
+      ENFORCEMENT:
+        - principle_text: IC_R010.qmd full + 01-always.md quick-ref + 12-issue-routing.md decision tree
+        - skill_level: idd-issue Step 4.4 + idd-diagnose Step 3.4 (predicate-driven default-on)
+        - hook_level: (none — heuristic is advisory, no PreToolUse hook needed)
+        - process: PR review checks confidence label assignment; close audit verifies routing rules
+
+      EXEMPTIONS (NOT IC_R010 violations):
+        - issues created outside idd-issue / idd-diagnose (manual gh issue create / web UI)
+          MAY remain without confidence label until next idd-diagnose touches them
+        - existing milestones (技詮 series) without retroactive audit (forward-applicable only)
+        - issues explicitly opted out via Sys.getenv("SKIP_CONFIDENCE_TRIAGE") env var
+
+    violations:
+      - "AI agent runs idd-issue Step 4.4, scans body, sees 'Keller Brand Mantra' and auto-applies confidence:exploratory without AskUserQuestion (silent classification violation of INVARIANT 7)"
+      - "Plugin step skipped despite predicate match (document source + 2+ issues) because 'user can do it manually' (predicate-driven default-on violation)"
+      - "Issue with confidence:exploratory placed in source-doc milestone (routing violation INVARIANT 3 — exploratory belongs in Lab project ± Future Planning)"
+      - "Future Planning milestone given a due date (INVARIANT 4 violation)"
+      - "Lab project columns reordered to [In Progress, Considering, Done, Future Planning] (INVARIANT 5 violation)"
+      - "Confidence introduced as Type-replacement (e.g., bug label removed in favor of confidence:confirmed) (INVARIANT 2 orthogonality violation)"
+
+    compliant:
+      - "Issue #412 (替換鏡片無資料) labeled bug + priority:P1 + company:QEF_DESIGN + module:VitalSigns + source:suggestion_docs + confidence:confirmed → routed to milestone 向創建議_20260411 + project company:QEF_DESIGN"
+      - "Issue #406 (K-means 4-step) labeled enhancement + module:BrandEdge + source:suggestion_docs + confidence:exploratory → routed to Marketing Theory Lab Considering column, NO milestone"
+      - "Team reviews #406 and decides 'we want to do this eventually' → gh issue edit --milestone 'Future Planning' + move card to Future Planning column"
+      - "Issue with confidence:vague + needs:scope-clarification gets clarified by stakeholder comment → confidence:vague replaced with confidence:confirmed; needs:scope-clarification removed"
+
+    boundary_cases:
+      manual_gh_issue_create: "Issues created via manual gh issue create or GitHub web UI MAY lack confidence label until next idd-diagnose Step 3.4 invocation; idd-diagnose detects missing label and prompts user"
+      existing_milestones_no_retroactive: "技詮 series milestones (#2-#6) and other pre-2026-05-02 milestones are NOT retroactively triaged; only forward-applicable + 1 dogfood backfill (`向創建議_20260411`)"
+      future_planning_singleton: "Single repo-wide Future Planning milestone with no due date; if scale demands per-Lab Future Planning, requires amendment to IC_R010"
+      env_var_escape: "Sys.getenv('SKIP_CONFIDENCE_TRIAGE')=true makes idd-issue Step 4.4 + idd-diagnose Step 3.4 silent-skip (rollback escape hatch for marketplace breakage)"
+
+    migration_path:
+      phase_a_principle_authoring: |
+        Author IC_R010.qmd Layer 1; add llm/CH06_ic.yaml entry; author
+        .claude/rules/12-issue-routing.md Layer 3; update 01-always.md.
+
+      phase_b_github_artifacts: |
+        gh label create confidence:confirmed/vague/exploratory.
+        gh api repos/.../milestones to create Future Planning (no due_on).
+        gh project create + configure 4 columns for Marketing Theory Lab.
+
+      phase_c_plugin_spec: |
+        Document idd-issue Step 4.4 + idd-diagnose Step 3.4 contract in
+        spectra change design.md. Plugin source repo
+        (PsychQuant/psychquant-claude-plugins) ships modifications via own
+        release flow + cross-link to IC_R010 + #509.
+
+      phase_d_dogfood_backfill: |
+        For each of 6 exploratory issues in 向創建議_20260411 (#406 #407
+        #409 #410 #411 #419):
+          gh issue edit --add-label confidence:exploratory
+          gh issue edit --remove-milestone "向創建議_20260411"
+          gh project item-add to Marketing Theory Lab Considering column
+          gh issue comment cross-link to IC_R010
+
+      phase_e_cross_co_verify: |
+        From each consuming company (QEF_DESIGN / D_RACING / MAMBA /
+        WISER / kitchenMAMA), gh issue list --label confidence:exploratory
+        verify visibility. Commit message Verified: trailer.
+
+    dependencies:
+      - "IC_R007"  # Sister: GitHub Issue Attachments — same axis (issue lifecycle discipline)
+      - "IC_R008"  # Sister: Scope Governance — IC_R010 adds orthogonal confidence + schedule axes
+      - "IC_R009"  # Sister: Bidirectional Traceability — IC_R010 governs routing pre-closure
+      - "MP155"    # Sibling: Minimize Human Input — heuristic mechanizes first-pass; user override always wins
+      - "DOC_R009" # Triple-layer sync (this rule itself follows DOC_R009)
+
+    metadata:
+      created: "2026-05-02"
+      triggered_by: "Issue #509 — 向創建議_20260411 milestone mixed customer-reflected P1 issues with 老師 academic theory expansion; engineers wasted design effort on exploratory work; customers couldn't distinguish reflection-resolution from research-expansion in milestone progress"
+
+  # ============================================================================
+  # IC_R011: Commercial Project Low-Bar Issue Filing
+  # ============================================================================
+  - id: IC_R011
+    type: rule
+    name: commercial_project_low_bar_issue_filing
+    display_name: "Commercial Project Low-Bar Issue Filing Rule"
+    one_liner: "When in doubt, file an issue — codify the bias toward audit trail in commercial codebases"
+    parent_principle: IC_R009
+    related:
+      - IC_R010
+      - IC_R009
+      - MP155
+      - MP029
+      - DOC_R009
+    triggered_by: "Issue #516 — User explicit instruction in #455 closing conversation: 商業專案不管多小的問題都要盡量開issue"
+    scope: "AI-agent issue-filing decisions in commercial-project codebases"
+    file_path: "CH06_integration_collaboration/rules/IC_R011_commercial_project_low_bar_issue_filing.qmd"
+    version: "1.0"
+    date_created: "2026-05-03"
+
+    rule_natural: |
+      In commercial-project codebases (default-on for kiki830621/ai_martech_*
+      family + 5-company ai_martech_l4_enterprise consumers), AI agents
+      SHOULD bias toward filing GitHub issues for any verifiable concern —
+      bug, design ambiguity, observed friction, deferred work, sister bug,
+      or any out-of-scope item with verifiable form — rather than treating
+      "too small to file" as the default. When in doubt: file the issue.
+      Cost ratio favors filing 30:1 (30 sec to file vs 30 min to reconstruct).
+
+    rule_formal:
+      INVARIANT_1: |
+        FORALL repo R in commercial scope (R matches default-on patterns OR
+        repo CLAUDE.md flags as commercial):
+          FORALL observation O during AI session in R:
+            IF O is verifiable (has concrete evidence in codebase OR
+                                 observed via reproduction OR
+                                 surfaces during user work):
+              AI SHOULD file issue for O
+              UNLESS O is exempt (pure speculation / already-covered /
+                                   AI-hallucinated / constraint-not-TODO /
+                                   meta-self-reference)
+
+      INVARIANT_2: |
+        Default-on triggers (SHOULD file):
+          - Verifiable behavior gap, inconsistency, or bug (even 1-line)
+          - Skill/plugin/tool design ambiguity or friction
+          - Code review minor smells (typo, naming, stale comment)
+          - Plan tier explicit out-of-scope items (if verifiable)
+          - Deferred work referenced in closing comments (future/TODO/follow-up)
+          - Sister bugs discovered during manual reproduction
+          - Out-of-scope items user might forget
+
+      INVARIANT_3: |
+        Default-off exemptions (MAY skip — narrow):
+          - Pure speculation/brainstorm (route via IC_R010 exploratory instead)
+          - Already-covered by existing open issue (comment on that)
+          - AI-hallucinated concern with no codebase evidence (verify first per MP029)
+          - Constraint not TODO (deliberate non-action)
+          - Meta self-reference (PR doesn't file followups for being a PR)
+
+      INVARIANT_4: |
+        Scope boundary (Decision 2 = C, default-on with opt-out):
+          IN-SCOPE: kiki830621/ai_martech_* / ai_martech_l4_enterprise / 5
+                    consuming companies / PsychQuant/* commercial / repos
+                    with explicit CLAUDE.md commercial flag
+          OUT-OF-SCOPE: personal repos / OSS contributions / hobby code
+
+      INVARIANT_5: |
+        Strictness (Decision 1 = B):
+          Wording is SHOULD (not SHALL) — permits judgment within explicit
+          triggers + exemptions. False positives (over-filing) are tolerated;
+          false negatives (missed audit trail) are not.
+
+      INVARIANT_6: |
+        Rollback escape hatches (Decision 3 = C, defense in depth):
+          - Env var: AI_LOW_BAR_ISSUE_FILING=false (temporary silence)
+          - Repo CLAUDE.md flag: # Disable IC_R011 (permanent opt-out)
+
+      INVARIANT_7: |
+        Application scope (Decision 4 = B):
+          AI agents PRIMARILY bound; humans encouraged but not enforced.
+          IDD discipline is AI-driven workflow; principle binds AI heuristic.
+
+    violations:
+      - "Silent skip of verifiable concern as 'too small to file'"
+      - "Discuss in conversation only, never materialize as issue"
+      - "Closing summary mentions 'follow-up' or 'deferred' but no issue created/linked"
+      - "AI judgment 'considered & rejected, no issue needed' for verifiable items (CONSTRAINT vs DEFERRED conflation)"
+      - "Sister bug discovered → 'same as #N, just note in passing' instead of separate issue"
+      - "Out-of-scope items in Plan section not surfaced as follow-up issues"
+
+    compliant:
+      - "Issue #455 close → 4 follow-ups filed for verify findings (#511 / #512 / #513 / #514)"
+      - "Issue #510 manual reproduction → sister bug filed as #518; another sister filed as #520"
+      - "Issue #510 Plan-tier out-of-scope → Strategy C filed as #517"
+      - "Issue #510 verify → 2 LOW findings combined into #519"
+      - "Issue #516 Plan-tier out-of-scope → 3 enhancements filed as #521 / #522 / #523"
+      - "Skill design gap during #455 close → filed as #515"
+      - "User explicit instruction → filed as #516 (this principle)"
+
+    boundary_cases:
+      personal_repo_default: "Repos without ai_martech / PsychQuant / commercial flag default to personal-repo discipline (no IC_R011)"
+      mixed_session: "AI working on commercial repo opens issue per IC_R011; switching to personal repo same session → IC_R011 stops applying (per-repo scope)"
+      emergency_silence: "AI_LOW_BAR_ISSUE_FILING=false env var temporarily silences for current session; restart session restores default-on"
+      genuine_ambiguity: "When unsure if observation is verifiable concern vs speculation → default to filing (Decision 1 = B SHOULD permits this judgment); invalid issue close in minutes if needed"
+      ic_r010_disambiguation: "confidence:exploratory issue under IC_R010 ARE filed (per IC_R011); IC_R011 skip means no issue at all"
+      mp155_orthogonality: "MP155 minimizes user INPUT (don't ask user every small thing); IC_R011 maximizes audit TRAIL (do file every concern). Both reduce maintenance debt — fewer interruptions for user, more findable history."
+
+    migration_path:
+      phase_a_codify: |
+        Author IC_R011.qmd Layer 1; sync llm/CH06_ic.yaml principle_count
+        7 → 8 + IC_R011 entry + hierarchy; sync .claude/rules/01-always.md
+        Layer 3. Commit + push with Verified: trailer.
+
+      phase_b_dogfood_backfill: |
+        Audit recent (last 1-2 weeks) closed issues for retroactive
+        compliance. Where closing summaries mention "follow-up"/"deferred"
+        without filed issues → file retroactively. Limit to recent issues
+        (not full history) to bound scope.
+
+      phase_c_plugin_surface: |
+        (Filed as #523, out-of-scope for #516) Update idd-* skills to
+        surface IC_R011 awareness during workflows (e.g. AskUserQuestion
+        at appropriate checkpoints).
+
+      phase_d_mechanical_enforcement: |
+        (Filed as #521, out-of-scope for #516) Hook / linter backstop for
+        behavioral drift.
+
+      phase_e_mechanical_detection: |
+        (Filed as #522, out-of-scope for #516) Heuristic
+        commercial-vs-personal repo detection (alternative to manual flag).
+
+    rollback_strategy: |
+      If IC_R011 causes tracker noise:
+        Phase 1 (immediate): AI_LOW_BAR_ISSUE_FILING=false env var
+        Phase 2 (per-repo): # Disable IC_R011 in repo CLAUDE.md
+        Phase 3 (principle-level): Amend wording via DOC_R009 three-layer
+                                    sync + IC_P002 verify
+
+      Full rollback (delete IC_R011) requires IC_P002 verify across 5
+      companies + explicit user approval — irreversible decisions are
+      deliberate.
+
+    dependencies:
+      - "IC_R009"  # Sister: Bidirectional Traceability — IC_R011 lowers filing threshold; IC_R009 enforces commit↔issue mapping
+      - "IC_R010"  # Sister: Issue Source Confidence Triage — orthogonal axis (IC_R010 routes opened issues; IC_R011 governs whether to open)
+      - "MP155"    # Orthogonal: Minimize Human Input — IC_R011 maximizes audit trail (different axis, both reduce debt)
+      - "MP029"    # Sister: No Fake Information — don't pretend verifiable concern doesn't exist by skipping filing
+      - "DOC_R009" # Triple-layer sync (this rule itself follows DOC_R009)
+
+    metadata:
+      created: "2026-05-03"
+      triggered_by: |
+        Issue #516 — User explicit instruction in #455 close conversation
+        (2026-05-03): 「商業專案不管多小的問題都要盡量開 issue」.
+        AI default heuristic in session repeatedly biased toward
+        conservative filing; user repeatedly explicit-overrode toward
+        "file it." Pattern indicates AI default mis-calibrated for
+        commercial contexts. Codification establishes IC_R011 as
+        anchor for commercial-project filing discipline, complementing
+        IC_R010 routing axis.
+
+# ============================================================================
+# Relationship Hierarchy
+# ============================================================================
+hierarchy:
+  - level: meta_principle
+    id: MP014
+    name: "Change Tracking Principle"
+    description: "Establishes the need for change tracking"
+
+  - level: principle
+    id: IC_P001
+    name: "Universal Immediate Sync Principle"
+    description: "Defines the universal sync pattern for all repositories"
+    implements: MP014
+
+  - level: principle
+    id: IC_P002
+    name: "Cross-Company Verification Principle"
+    description: "Shared subrepo change must be verified against all consuming companies before commit"
+    implements: MP122
+    related: [IC_P001, MP029, TD_P002, TD_R007]
+
+  - level: rule
+    id: IC_R001
+    name: "Global Scripts Synchronization Rule"
+    description: "Strict implementation for global_scripts shared repo"
+    implements: IC_P001
+
+  - level: rule
+    id: IC_R007
+    name: "GitHub Issue Attachment Workflow"
+    description: "Upload attachments to Release assets for private repos"
+    implements: MP029
+
+  - level: rule
+    id: IC_R008
+    name: "GitHub Issue Scope Governance Rule"
+    description: "Create every issue in global_scripts with scope labels"
+    implements: MP012
+
+  - level: rule
+    id: IC_R009
+    name: "Bidirectional Commit-Issue Traceability Rule"
+    description: "Every commit references an issue; every issue has a resolving commit"
+    implements: MP012
+
+  - level: rule
+    id: IC_R010
+    name: "Issue Source Confidence Triage Rule"
+    description: "Route issues to milestone vs project based on source-confidence × team-commitment 3D taxonomy"
+    implements: IC_R009
+    related: [IC_R007, IC_R008, MP155, DOC_R009]
+
+  - level: rule
+    id: IC_R011
+    name: "Commercial Project Low-Bar Issue Filing"
+    description: "When in doubt file the issue — commercial-project bias toward audit trail completeness; complementary to IC_R010 routing"
+    implements: IC_R009
+    related: [IC_R009, IC_R010, MP155, MP029, DOC_R009]

@@ -1,0 +1,235 @@
+# MP165 Dashboard Presence Contract — QEF_DESIGN reference instance
+# Triggered by issue #595 reproduction (BrandEdge dashboard 6 sub-tabs broken)
+# Spectra change: dashboard-presence-verification
+#
+# Schema validated by shared/global_scripts/98_test/e2e/contracts/contracts.R::validate_contract_yaml()
+#
+# Phase 1 (2026-05-13, refs #653) — new Phase 1 primitives are now available
+# in contracts.R for future contracts in this file:
+#   - assert_no_error_text(selector)             # catches Error:/[object Object]/<NA>/NaN
+#   - assert_no_hardcoded_english(selector, ...) # catches i18n regressions
+#   - assert_kpi_no_error_placeholder(selector)  # stricter than assert_kpi_card_value
+# Reserved auto-suggested block at end of file for adaptive-walker skill output
+# (Phase 3, spectra change adaptive-dashboard-test-loop).
+#
+# Threshold notes:
+#   - min_rows excluding placeholders: 5 brands minimum for hsg (largest PL).
+#     Per #595 Phase F (#601), AI scoring gap currently produces only Venture
+#     Gear with full attributes; once #601 resolves, hsg should reach >= 5.
+#   - Until #601 resolves, BrandEdge contracts are EXPECTED to fail — that
+#     surfaces the data-quality gap correctly. severity: critical means
+#     deploy-gate refuses deploy until data is filled in.
+#
+# Active platforms (per QEF_DESIGN/app_config.yaml > pipeline > platforms):
+#   amz_us (active)
+#   all (rollup, contracts run against rollup OR per-platform per design)
+
+company: QEF_DESIGN
+
+modules:
+
+  # ------------- BrandEdge --------------
+  brandedge:
+    enabled: true
+    sub_tabs:
+
+      position:
+        active_product_lines: [hsg, sfg, sfo, sss, bys, cas, sgf, sgo, psg, blb, its, rpl]
+        contracts:
+          - selector: "position-position_table"
+            assertion: "row_count_excluding_placeholders >= 5"
+            severity: critical
+          - selector: "position-brand"
+            assertion: "filter_choice_count >= 3"
+            severity: critical
+          - selector: "position-component_status"
+            assertion: "no_red_error_text"
+            severity: critical
+
+      positionDNA:
+        active_product_lines: [hsg, sfg, sfo, sss, bys, cas, sgf, sgo, psg, blb, its, rpl]
+        contracts:
+          - selector: "positionDNA-dna_plot"
+            assertion: "plotly_non_empty_traces >= 2"
+            severity: critical
+
+      positionMS:
+        active_product_lines: [hsg, sfg, sfo, sss, bys, cas, sgf, sgo, psg, blb, its, rpl]
+        contracts:
+          - selector: "positionMS-ms_plot"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: critical
+          - selector: "positionMS-cluster_table"
+            assertion: "row_count_excluding_placeholders >= 1"
+            severity: warning
+
+      positionKFE:
+        active_product_lines: [hsg, sfg, sfo, sss, bys, cas, sgf, sgo, psg, blb, its, rpl]
+        contracts:
+          - selector: "positionKFE-kfe_plot"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: critical
+
+      positionIdealRate:
+        active_product_lines: [hsg, sfg, sfo, sss, bys, cas, sgf, sgo, psg, blb, its, rpl]
+        contracts:
+          - selector: "positionIdealRate-ideal_table"
+            assertion: "row_count_excluding_placeholders >= 1"
+            severity: critical
+
+      positionStrategy:
+        active_product_lines: [hsg, sfg, sfo, sss, bys, cas, sgf, sgo, psg, blb, its, rpl]
+        contracts:
+          - selector: "positionStrategy-strategy_panel"
+            assertion: "non_empty_text"
+            severity: critical
+
+  # ------------- TagPilot --------------
+  tagpilot:
+    enabled: true
+    sub_tabs:
+
+      customerValue:                     # 顧客價值（RFM）
+        active_product_lines: [all]      # rollup tab
+        contracts:
+          - selector: "customerValue-kpi_total_customers"
+            assertion: "kpi >= 1000"
+            severity: critical
+          - selector: "customerValue-kpi_avg_order_value"
+            assertion: "kpi > 0"
+            severity: critical
+          - selector: "customerValue-pie_value_segments"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: critical
+          - selector: "customerValue-hist_value_score"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: critical
+
+      customerActivity:                  # 顧客活躍度（CAI）
+        active_product_lines: [all]
+        contracts:
+          - selector: "customerActivity-kpi_avg_cai"
+            assertion: "kpi != NA"
+            severity: critical
+
+      customerStatus:                    # 顧客狀態（NES）
+        active_product_lines: [all]
+        contracts:
+          - selector: "customerStatus-pie_nes"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: critical
+
+      customerLifecycle:                 # 生命週期預測
+        active_product_lines: [all]
+        contracts:
+          - selector: "customerLifecycle-table_predictions"
+            assertion: "row_count_excluding_placeholders >= 1"
+            severity: critical
+
+  # ------------- Marketing Vital-Signs --------------
+  vitalsigns:
+    enabled: true
+    sub_tabs:
+
+      customerRetention:
+        active_product_lines: [all]
+        contracts:
+          - selector: "customerRetention-kpi_retention_rate"
+            assertion: "kpi > 0"
+            severity: critical
+
+  # ------------- Dashboard Overview --------------
+  dashboard_overview:
+    enabled: true
+    sub_tabs:
+
+      overview:
+        active_product_lines: [all]
+        contracts:
+          - selector: "dashboardOverview-kpi_total_revenue"
+            assertion: "kpi > 0"
+            severity: critical
+          - selector: "dashboardOverview-kpi_new_customer_rate"
+            assertion: "kpi >= 0"
+            severity: critical
+          - selector: "dashboardOverview-kpi_total_dna_customers"
+            assertion: "kpi > 0"
+            severity: critical
+
+# === auto-suggested by adaptive walker ===
+# (Phase 3 skill /shiny-adaptive-walk appends contracts here after
+#  discovering coverage gaps. Hand-maintained sections above are immutable.
+#  See spectra change adaptive-dashboard-test-loop, issue #653.)
+#
+# 2026-05-13 iter 1 (/shiny-adaptive-walk QEF_DESIGN):
+#   InsightForge module was entirely missing — discovery walk found
+#   F1+F2+F3 (red errors on all 3 sub-tabs, refs #655). Adding contracts
+#   that would have caught those defects mechanically.
+
+  # ------------- InsightForge 360 (auto-suggested) --------------
+  insightforge:
+    enabled: true
+    sub_tabs:
+
+      poissonComment:                      # 市場賽道 (Market Track)
+        active_product_lines: [all]        # aggregated `_all` table
+        contracts:
+          # F1: red "Error: [object Object]" on 4 KPI cards (was #655 symptom)
+          - selector: "poisson_comment-rating_champion"
+            assertion: "no_error_placeholder"
+            severity: critical
+          - selector: "poisson_comment-rating_multiplier_value"
+            assertion: "no_error_placeholder"
+            severity: critical
+          - selector: "poisson_comment-review_champion"
+            assertion: "no_error_placeholder"
+            severity: critical
+          - selector: "poisson_comment-review_effect_value"
+            assertion: "no_error_placeholder"
+            severity: critical
+          # F1: red error on main detail table (was #655 symptom)
+          - selector: "poisson_comment-rating_multiplier_plot"
+            assertion: "no_red_error_text"
+            severity: critical
+          # #777 D1: negative-coef rows reach the detail table — the removed
+          # `coefficient > 0` filter must stay removed (no sign filtering).
+          - selector: "poisson_comment-analysis_table"
+            assertion: "row_count_excluding_placeholders >= 1"
+            severity: critical
+          # #777 D2: not_estimable_summary info-box renders without a red
+          # error — the `length(n) == 0` guard must not regress. Conditionally
+          # rendered (absent when 0 not_estimable rows, which is valid).
+          - selector: "poisson_comment-not_estimable_summary"
+            assertion: "no_red_error_text"
+            severity: warning
+
+      poissonTime:                         # 時間分析 (Time Analysis)
+        active_product_lines: [all]
+        contracts:
+          # F2: was 0/0/--/0 + "No data available" (was #655 symptom)
+          - selector: "poisson_time-total_analyses"
+            assertion: "kpi > 0"
+            severity: critical
+          - selector: "poisson_time-significant_count"
+            assertion: "kpi > 0"
+            severity: critical
+          - selector: "poisson_time-product_line_count"
+            assertion: "kpi > 0"
+            severity: critical
+          - selector: "poisson_time-strongest_effect"
+            assertion: "no_error_placeholder"
+            severity: critical
+          - selector: "poisson_time-time_effects_plot"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: critical
+
+      poissonFeature:                      # 精準行銷 (Precision Marketing)
+        active_product_lines: [all]
+        contracts:
+          # F3: red error / "--" placeholder on KPI + detail panel (was #655)
+          - selector: "poisson_feature-track_multiplier_plot"
+            assertion: "no_red_error_text"
+            severity: critical
+          - selector: "poisson_feature-analysis_table"
+            assertion: "row_count_excluding_placeholders >= 1"
+            severity: warning   # warning: QEF currently has 0 non-time predictors (#661)

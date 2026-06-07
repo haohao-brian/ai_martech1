@@ -1,0 +1,181 @@
+# MP165 Dashboard Presence Contract — D_RACING (技詮賽車精品)
+# Spectra change: dashboard-presence-verification
+#
+# Phase 1 (2026-05-13, refs #653) — new Phase 1 primitives available in
+# contracts.R: assert_no_error_text / assert_no_hardcoded_english /
+# assert_kpi_no_error_placeholder. Auto-suggested block reserved at end of
+# file for Phase 3 adaptive-walker output (spectra change adaptive-dashboard-test-loop).
+#
+# Active platforms (per D_RACING/app_config.yaml > pipeline > platforms):
+#   amz (active)
+#
+# Threshold notes:
+#   - D_RACING brand catalog smaller than QEF; min_brands floor at 3
+#     for BrandEdge contracts (vs QEF >= 5). Tune up as catalog grows.
+#   - TagPilot / VitalSigns / dashboard_overview thresholds match QEF
+#     pattern (KPIs > 0, charts non-empty). Customer count floor lower
+#     than QEF.
+
+company: D_RACING
+
+modules:
+
+  brandedge:
+    enabled: true
+    sub_tabs:
+
+      position:
+        active_product_lines: [all]
+        contracts:
+          - selector: "position-position_table"
+            assertion: "row_count_excluding_placeholders >= 3"
+            severity: critical
+          - selector: "position-brand"
+            assertion: "filter_choice_count >= 2"
+            severity: critical
+          - selector: "position-component_status"
+            assertion: "no_red_error_text"
+            severity: critical
+
+      positionDNA:
+        active_product_lines: [all]
+        contracts:
+          - selector: "positionDNA-dna_plot"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: critical
+
+      positionMS:
+        active_product_lines: [all]
+        contracts:
+          - selector: "positionMS-ms_plot"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: warning
+
+  tagpilot:
+    enabled: true
+    sub_tabs:
+
+      customerValue:
+        active_product_lines: [all]
+        contracts:
+          - selector: "customerValue-kpi_total_customers"
+            assertion: "kpi >= 100"
+            severity: critical
+          - selector: "customerValue-kpi_avg_order_value"
+            assertion: "kpi > 0"
+            severity: critical
+          - selector: "customerValue-pie_value_segments"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: critical
+
+      customerActivity:
+        active_product_lines: [all]
+        contracts:
+          - selector: "customerActivity-kpi_avg_cai"
+            assertion: "kpi != NA"
+            severity: critical
+
+      customerStatus:
+        active_product_lines: [all]
+        contracts:
+          - selector: "customerStatus-pie_nes"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: critical
+
+  vitalsigns:
+    enabled: true
+    sub_tabs:
+
+      customerRetention:
+        active_product_lines: [all]
+        contracts:
+          - selector: "customerRetention-kpi_retention_rate"
+            assertion: "kpi > 0"
+            severity: warning
+
+  dashboard_overview:
+    enabled: true
+    sub_tabs:
+
+      overview:
+        active_product_lines: [all]
+        contracts:
+          - selector: "dashboardOverview-kpi_total_revenue"
+            assertion: "kpi > 0"
+            severity: critical
+          - selector: "dashboardOverview-kpi_total_dna_customers"
+            assertion: "kpi > 0"
+            severity: critical
+
+# === auto-suggested by adaptive walker ===
+# (Phase 3 skill /shiny-adaptive-walk appends contracts here after
+#  discovering coverage gaps. Hand-maintained sections above are immutable.
+#  See spectra change adaptive-dashboard-test-loop, issue #653.)
+#
+# 2026-05-13 iter 1 (/shiny-adaptive-walk D_RACING):
+#   InsightForge module was entirely missing — discovery walk found all 3 sub-tabs
+#   broken (KPI placeholders) due to #661 amz DRV pipeline gap (worse than QEF: 0 poisson rows).
+
+  # ------------- InsightForge 360 (auto-suggested) --------------
+  insightforge:
+    enabled: true
+    sub_tabs:
+
+      poissonComment:                      # 市場賽道 (Market Track)
+        active_product_lines: [all]
+        contracts:
+          - selector: "poisson_comment-rating_champion"
+            assertion: "no_error_placeholder"
+            severity: warning   # warning: #661 D_RACING amz DRV not run, no comment_attribute data
+          - selector: "poisson_comment-rating_multiplier_value"
+            assertion: "no_error_placeholder"
+            severity: warning
+          - selector: "poisson_comment-review_champion"
+            assertion: "no_error_placeholder"
+            severity: warning
+          - selector: "poisson_comment-review_effect_value"
+            assertion: "no_error_placeholder"
+            severity: warning
+          - selector: "poisson_comment-rating_multiplier_plot"
+            assertion: "no_red_error_text"
+            severity: critical
+          # #777 D1: negative-coef rows reach the detail table — the removed
+          # `coefficient > 0` filter must stay removed (no sign filtering).
+          - selector: "poisson_comment-analysis_table"
+            assertion: "row_count_excluding_placeholders >= 1"
+            severity: warning   # warning: #661 D_RACING amz DRV not run, no comment_attribute data yet
+          # #777 D2: not_estimable_summary info-box renders without a red
+          # error — the `length(n) == 0` guard must not regress. Conditionally
+          # rendered (absent when 0 not_estimable rows, which is valid).
+          - selector: "poisson_comment-not_estimable_summary"
+            assertion: "no_red_error_text"
+            severity: warning
+
+      poissonTime:                         # 時間分析 (Time Analysis)
+        active_product_lines: [all]
+        contracts:
+          - selector: "poisson_time-total_analyses"
+            assertion: "kpi > 0"
+            severity: warning   # warning: D_RACING amz DRV not run at all (#661)
+          - selector: "poisson_time-significant_count"
+            assertion: "kpi > 0"
+            severity: warning
+          - selector: "poisson_time-product_line_count"
+            assertion: "kpi > 0"
+            severity: warning
+          - selector: "poisson_time-strongest_effect"
+            assertion: "no_error_placeholder"
+            severity: warning
+          - selector: "poisson_time-time_effects_plot"
+            assertion: "plotly_non_empty_traces >= 1"
+            severity: warning
+
+      poissonFeature:                      # 精準行銷 (Precision Marketing)
+        active_product_lines: [all]
+        contracts:
+          - selector: "poisson_feature-track_multiplier_plot"
+            assertion: "no_red_error_text"
+            severity: critical
+          - selector: "poisson_feature-analysis_table"
+            assertion: "row_count_excluding_placeholders >= 1"
+            severity: warning   # warning: #661 D_RACING amz DRV gap

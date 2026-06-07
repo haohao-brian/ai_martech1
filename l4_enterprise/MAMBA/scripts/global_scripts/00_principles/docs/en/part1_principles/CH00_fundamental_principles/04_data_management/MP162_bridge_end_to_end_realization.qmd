@@ -1,0 +1,206 @@
+---
+id: "MP162"
+title: "Bridge End-to-End Realization"
+type: "meta-principle"
+category: "data_management"
+date_created: "2026-04-29"
+date_modified: "2026-04-30"
+author: "Claude (spectra change bridge-end-to-end-realization-principle, GitHub issue #503; sister back-edit per spectra change mp163-progressive-completeness-principle, GitHub issue #505)"
+status: "active"
+version: "1.1"
+weight: 162
+related_to:
+  - "MP163": "Progressive Completeness (sister principle — MP162 governs the time/ship-readiness axis where eventual L5 completion is mandatory; MP163 governs the orthogonal human-input-completeness axis where the pipeline is always runnable at any L. Both axes must be satisfied independently — neither substitutes for the other.)"
+  - "MP160": "AI Schema/Bridge Authoring Completeness (sister principle — MP160 governs authoring-time exhaustiveness, MP162 governs consumption-time exhaustiveness; both share the invariant 'a bridge transports facts, not just schema')"
+  - "MP102": "ETL Output Standardization v1.3 (the staged ship-readiness ratchet plugs into MP102's reviewed_by structured form, where verdict CONVERGED at L1 alone is no longer ship-ready)"
+  - "MP156": "Two-Tier Normativity (MP162 is itself Tier-1 normative; the bridge yamls it binds are Tier-2 Schema Contracts)"
+  - "MP157": "Two-Layer YAML Authoring (MP162 governs the verification layer that runs against committed Layer 2 bridges)"
+  - "MP159": "Glue Authoring Boundary Immutability (sibling — implicit-to-explicit pattern; MP159 says WHAT-stays-immutable in Layer 1, MP162 says WHEN-realization-counts-as-done across L1-L5)"
+  - "MP161": "Company-Scoped Schema Recognition (sibling — implicit-to-explicit pattern; MP161 governs WHERE schemas live, MP162 governs WHEN bridges are done)"
+  - "MP064": "ETL-Derivation Separation (the L2/L3 split mirrors MP064's ETL/derivation boundary — L2 is ETL ship-readiness, L3 is derivation ship-readiness)"
+  - "MP029": "No Fake Information (a bridge stopped at L1 with verdict 'ship-ready' is fake assurance — the data has not actually reached production use)"
+  - "DOC_R009": "Principle Triple-Layer Synchronization (this principle was authored through the three-layer sync: .qmd → llm/CH00_meta.yaml → rules/01-always.md)"
+  - "IC_P002": "Cross-Company Verification (L2-L5 gates trigger cross-co verification when bridges affect shared schemas)"
+  - "MP165": "Dashboard Presence as Pipeline Acceptance (sister principle — MP162 governs the per-bridge unit at L1-L5 ship-readiness with L4 requiring at least one Shiny module to render > 0 rows; MP165 governs the per-dashboard-tab × per-platform × per-product_line unit at finer granularity. Different units, complementary axes — both required for production. MP162 ensures bridges deliver data; MP165 ensures every dashboard surface that consumes that data renders contract-pass content for every active platform / product_line combination.) [back-edit added 2026-05-10 per spectra change dashboard-presence-verification]"
+binds:
+  - "shared/global_scripts/01_db/raw_schema/_authoring/bridges/*/*/*.bridge.yaml"
+  - "shared/global_scripts/05_etl_utils/glue/fn_glue_bridge.R"
+  - "shared/global_scripts/00_principles/.claude/skills/glue-bridge/SKILL.md"
+  - "shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/validate_bridge_yaml.R"
+  - "shared/global_scripts/00_principles/.claude/rules/01-always.md"
+---
+
+# MP162: Bridge End-to-End Realization
+
+## Core Statement
+
+**A bridge yaml SHALL progress through five staged ship-readiness levels (L1 through L5). Each level represents a distinct ship-readiness criterion verifying a different layer of the data flow from source CSV through canonical raw, derivation, app data, and ultimately to dashboard rendering. Reaching L1 alone does NOT constitute completion of bridge authoring obligations; eventual completion at L5 is mandatory for every production bridge.**
+
+The five levels form a ratchet: once Lk is reached, regression below Lk SHALL block any pull request that would cause it. There is no permanent stopping point at any level Lk where k < 5.
+
+## The 5-Level Model
+
+```
+Level   Verifies                                       Verification gate
+─────   ──────────────────────────────────────────     ─────────────────────────────────
+L1      Bridge yaml structural validity                /glue-bridge skill Step 7
+                                                       (validate_bridge_yaml.R)
+                                                       + Steps 6a-6e (4-agent ensemble)
+
+L2      Raw layer realization                          /glue-bridge skill Step 11
+        (fn_glue_bridge produces nrow > 0,             (post-commit gate)
+        no INSERT-time type coercion errors)
+
+L3      Derivation pipeline runnability                CI pipeline gate
+        (DRV targets that CONSUME the canonical        (post-merge)
+        raw table run, each produces non-empty
+        cleansed/app_data tables)
+
+L4      Dashboard rendering                            CI E2E test gate
+        (Shiny modules render non-empty panels         (shinytest2 / safari-browser)
+        for affected (company, platform, pl_id))
+
+L5      End-to-end retention audit                     Periodic audit + on-demand
+        (row count, column count, NA rate              (cron schedule + manual cmd)
+        within tolerances; no silent data loss
+        between adjacent layers)
+```
+
+Levels are cumulative: a bridge at L3-ready has also passed L1 and L2. The implementation of L2-L5 gates is tracked separately as GitHub issue #503 sub-scopes 1-4; this principle establishes the contract those implementations bind to.
+
+## Why This Rule Exists
+
+GitHub issue #503 (2026-04-29): after the post-#502 ensemble re-pilot of `product_attributes_blb.bridge.yaml` reduced max severity from CRITICAL (iter 1) to MEDIUM (iter 2), the user observed:
+
+> 「我剛剛想到「`/glue-bridge`」的最終目標都是要讓 derivation 可以跑完整,然後資料能完全顯示在儀表版上,同時要 check 不會有資料遺漏」
+
+The skill at that point declared CONVERGED based on bridge yaml correctness. But yaml correctness does not answer:
+
+| Question                                                          | Layer that answers it |
+| ----------------------------------------------------------------- | --------------------- |
+| Does the bridge yaml lint pass?                                   | L1 (covered)          |
+| Does DuckDB actually accept the INSERT?                           | L2 (uncovered)        |
+| Do downstream DRV targets that consume this raw table run?        | L3 (uncovered)        |
+| Does the dashboard render the (company, platform, pl_id) cell?   | L4 (uncovered)        |
+| Across the full chain, is row/column count preserved as expected? | L5 (uncovered)        |
+
+**A bridge that has passed only L1 has demonstrated only that its structure is consistent with itself.** It has not demonstrated that the data reaches production use. Declaring such a bridge "ship-ready" is fake assurance (an MP029 violation in spirit, if not in letter).
+
+Without an explicit principle, the gap between "bridge yaml correct" and "data on dashboard" leaks into ad-hoc reasoning across the codebase: some authors test L2 manually, some skip it; some watch dashboards after deploy, some don't; retention audits exist for some pipelines and not others. MP162 establishes the contract uniformly.
+
+## The Ratchet Property
+
+Once a bridge has been verified at level Lk, no subsequent change SHALL cause Lk to fail. Any pull request whose merge would cause an existing bridge to regress from Lk-ready to a state that no longer satisfies Lk SHALL be blocked at the verification gate corresponding to Lk.
+
+This applies independently per level:
+
+- A change that breaks the bridge yaml lint blocks at the L1 gate.
+- A change that breaks the DRV consumer target blocks at the L3 gate, even if the bridge yaml is still valid.
+- A change that breaks the Shiny render path blocks at the L4 gate.
+
+The ratchet does NOT require simultaneous achievement of all levels in a single pull request. A bridge that is L2-ready in one PR and L3-ready in a later PR satisfies the ratchet so long as the L2-ready state is preserved through the second PR.
+
+**Rationale**: making each level an independent ratchet preserves the parallelizable structure of the staged model. Wiring all five gates to fire as a single combined check would force every bridge change to also touch DRV / Shiny / audit infrastructure, defeating the point of staged progression.
+
+## Stale-Tracking
+
+A bridge that remains at level Lk (k < 5) for longer than the configured stale-days threshold without progressing to Lk+1 SHALL trigger a tracking obligation. The minimum tracking action is a GitHub issue (or equivalent) that names the bridge, the current level, and the next level to be reached.
+
+- **Default stale threshold**: 30 days.
+- **Per-bridge override**: bridge yaml MAY declare a `stale_days` field overriding the default.
+- **Production ceiling**: the override SHALL NOT exceed 90 days for production bridges.
+- **L5 exemption**: a bridge that has reached L5-ready is exempt from stale tracking.
+
+This enforces the "no permanent stopping point" rule operationally: a bridge that has been L2-ready for 6 months without moving to L3 surfaces as an open issue, forcing a decision (proceed to L3, downgrade to non-production, or formally accept the stall as out-of-scope).
+
+## Sister Principle: MP160
+
+MP162 is the sister principle to **MP160 (AI Schema/Bridge Authoring Completeness)**. The two principles share the deeper invariant:
+
+> **A bridge is a transport of factual content from source to dashboard, not merely a schema translation.**
+
+The shared invariant decomposes into two complementary obligations:
+
+| Time              | Principle | Question answered                                     |
+| ----------------- | --------- | ----------------------------------------------------- |
+| Authoring time    | MP160     | Did the bridge author enumerate every source column? |
+| Consumption time  | MP162     | Did the committed bridge actually reach the dashboard? |
+
+A bridge can pass MP160 (every column enumerated) and still violate MP162 (stuck at L1 forever). A bridge cannot pass MP162 without first satisfying MP160 — completeness at authoring is a prerequisite for completeness at consumption.
+
+The two principles together form a closed loop: authoring completeness (MP160) ensures no source column is silently dropped; consumption completeness (MP162) ensures no enumerated column is silently lost between source and dashboard.
+
+## Sister Principle: MP163 (added v1.1, 2026-04-30)
+
+MP162 has a second sister principle: **MP163 (Progressive Completeness)**. Where MP160 / MP162 form an authoring/consumption pair on the *exhaustiveness* dimension, MP162 / MP163 form an orthogonal pair on the *axis-of-readiness* dimension:
+
+| Axis                              | What completion looks like                                       | Principle |
+| --------------------------------- | ---------------------------------------------------------------- | --------- |
+| Time / ship-readiness             | Bridge progresses L1 → L2 → L3 → L4 → L5; L5 mandatory eventually | **MP162** |
+| Human-input completeness          | Pipeline runs at every state of human-input filling (0% → 100%) | **MP163** |
+
+A bridge satisfying MP162 alone could theoretically reach L5 only after 100% of human inputs are filled — which would force shipping pressure or perpetual delay (forbidden by MP163 Gate 4). Conversely, a pipeline satisfying MP163 alone could remain runnable forever at L1 (forbidden by MP162's "no permanent stopping point" rule).
+
+**Both axes must be satisfied independently.** A production-ready bridge is one that has reached L5 *and* runs at every state of human-input completeness (gaps materialized as visible sentinels per MP163, surfaced to attention loops, with asymptotic completion paths that require no redeploy).
+
+Stated as a grid:
+
+```
+                                MP163 axis (human-input completeness)
+                                0%        50%       100%
+                              ┌─────────┬─────────┬─────────┐
+                          L1  │ runs    │ runs    │ runs    │
+                              ├─────────┼─────────┼─────────┤
+                MP162 axis L2 │ runs    │ runs    │ runs    │
+                (time)        ├─────────┼─────────┼─────────┤
+                          L3  │ runs    │ runs    │ runs    │
+                              ├─────────┼─────────┼─────────┤
+                          L4  │ runs    │ runs    │ runs    │
+                              ├─────────┼─────────┼─────────┤
+                          L5  │ runs    │ runs    │ runs    │  ← bottom-right cell is the goal
+                              └─────────┴─────────┴─────────┘
+```
+
+Every cell of the grid must be reachable; the bottom-right cell is the goal of both principles together.
+
+## Files Bound by This Principle
+
+Per MP156 (Two-Tier Normativity), the following Tier-2 files are bound by MP162:
+
+- `shared/global_scripts/01_db/raw_schema/_authoring/bridges/{COMPANY}/{platform}/*.bridge.yaml` — every bridge yaml is subject to the L1-L5 staging contract. **Category A (Schema Contract)** classification.
+- `shared/global_scripts/05_etl_utils/glue/fn_glue_bridge.R` — the runtime interpreter that L2 verification invokes against committed bridges.
+- `shared/global_scripts/00_principles/.claude/skills/glue-bridge/SKILL.md` — the skill that orchestrates L1 (Steps 6a-7) and will orchestrate L2 (Step 11, future).
+- `shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/validate_bridge_yaml.R` — the L1 validator.
+- `shared/global_scripts/00_principles/.claude/rules/01-always.md` — Layer 3 quick reference for this principle.
+
+### Change Discipline
+
+Any modification to bound files that would cause a previously L2-or-higher-ready bridge to regress SHALL:
+
+1. Block at the corresponding verification gate (L2 / L3 / L4 / L5).
+2. Trigger IC_P002 cross-company verification if the modification touches files shared across consuming companies (QEF_DESIGN, D_RACING, MAMBA, WISER, kitchenMAMA).
+3. Be recorded in the commit message with the level affected and the bridges affected.
+
+### What This Principle Does NOT Specify
+
+- The specific implementation of L2-L5 gates is **out of scope** for MP162. Those are tracked separately as GitHub issue #503 sub-scopes 1-4 and will land via dedicated spectra changes.
+- The specific format of the bridge yaml `stale_days` field is **deferred** to the L2 implementation (sub-scope 1).
+- The specific tolerance thresholds for L5 retention audit are **deferred** to the L5 implementation (sub-scope 4).
+- A traditional Chinese mirror of this `.qmd` is **deferred** to the project's broader zh translation backlog (consistent with MP160 and MP161, which also lack zh mirrors at the time of MP162's authoring).
+
+## Related Principles
+
+- **MP160** — AI Schema/Bridge Authoring Completeness. Sister principle. MP160 governs authoring-time exhaustiveness; MP162 governs consumption-time exhaustiveness. Both share the "bridge transports facts" invariant.
+- **MP102 v1.3** — ETL Output Standardization. The structured `reviewed_by` form currently records L1 verdict (CONVERGED at iteration N). A future amendment may extend `reviewed_by` to also record the highest level reached (e.g., `e2e_status: L3-ready, last_audited_at: 2026-05-15`).
+- **MP156** — Two-Tier Normativity. MP162 is itself Tier-1 normative; the bridges it binds are Tier-2 Schema Contracts.
+- **MP157** — Two-Layer YAML Authoring. MP162 governs the consumption-side verification of the Layer 2 (bridge) yaml.
+- **MP159** — Glue Authoring Boundary Immutability. Sibling implicit-to-explicit principle: MP159 codifies what cannot change during authoring; MP162 codifies what must be verified after authoring.
+- **MP161** — Company-Scoped Schema Recognition. Sibling implicit-to-explicit principle: MP161 codifies where schemas live; MP162 codifies when bridges are done.
+- **MP064** — ETL-Derivation Separation. The L2/L3 split in MP162 mirrors MP064's ETL/derivation boundary.
+- **MP029** — No Fake Information. A bridge declared "ship-ready" without verification beyond L1 is fake assurance about its production status.
+- **DOC_R009** — Principle Triple-Layer Synchronization. This principle was authored through the prescribed three-layer flow: `.qmd` (this file) → `llm/CH00_meta.yaml` → `.claude/rules/01-always.md`.
+- **IC_P002** — Cross-Company Verification. L3-L5 gates that touch shared infrastructure trigger cross-co verification.
+
+## Trigger Issue
+
+Authored in response to GitHub issue #503 (2026-04-29) — `[umbrella] /glue-bridge skill 最終目的是 end-to-end (derivation 跑完 + dashboard 顯示完整 + 無資料遺漏),目前 scope 僅止於 bridge ship-readiness`. The umbrella issue tracks four sub-scopes (L2 / L3 / L4 / L5 enforcement gates); this principle (sub-scope 0) is the prerequisite anchor those sub-scopes reference.

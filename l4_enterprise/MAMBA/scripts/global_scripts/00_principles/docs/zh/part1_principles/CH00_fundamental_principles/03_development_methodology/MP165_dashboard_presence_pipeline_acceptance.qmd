@@ -1,0 +1,523 @@
+---
+title: "MP165:儀表板呈現作為管線驗收條件"
+subtitle: "管線驗收契約從資料庫寫入完成,延伸到 per-dashboard-tab × per-platform × per-product_line 每個欄位渲染呈現"
+category: "Meta-Principle"
+type: "Meta-Principle"
+id: "MP165"
+version: "1.3"
+date_created: "2026-05-10"
+date_modified: "2026-05-14"
+status: "active"
+weight: 165
+author: "Claude(spectra change dashboard-presence-verification, GitHub issue #599 自 #595 reproduce 衍生)"
+related_to:
+  - "MP029": "禁止 Fake Information(MP165 contract assertion 驗證使用者實際看到的值 — 1 row 'Ideal' placeholder 算 gap 應 surface,不算成功;對齊 MP029 verify-before-acting)"
+  - "MP102": "ETL 輸出標準化(MP102 v1.3 governs bridge yaml 寫作契約;MP165 加入下游渲染契約 — bridge yaml 正確 + DRV 管線完成是必要但不充分,使用者可見完整性還需要 MP165)"
+  - "MP162": "Bridge End-to-End Realization(MP162 governs per-bridge L1-L5 ship-readiness 軸,L4 要求至少一個 Shiny module 渲染 > 0 rows;MP165 是 per-dashboard-tab × per-platform × per-product_line 互補 — 不同顆粒度,不同 unit,姊妹軸)"
+  - "MP163": "Progressive Completeness(MP163 governs 人工輸入完整度軸 — 人工輸入缺漏時管線繼續跑,gap 以 sentinel 顯現;MP165 governs 渲染驗收軸 — 唯有每個 tab × platform × product_line 渲染滿足契約,管線才算成功。兩軸正交,皆需滿足才能達到使用者可見完整性。)"
+binds:
+  - "shared/global_scripts/98_test/e2e/contracts/contracts.R"
+  - "shared/global_scripts/98_test/e2e/contracts/*.yaml"
+  - "shared/global_scripts/98_test/e2e/contracts/*_drv.yaml"
+  - "shared/global_scripts/98_test/e2e/test-*.R"
+  - "shared/global_scripts/98_test/test_drv_output_shape_gate.R"
+  - "shared/global_scripts/23_deployment/dashboard_presence_gate.R"
+  - "shared/global_scripts/23_deployment/drv_output_shape_gate.R"
+  - "shared/update_scripts/DRV/_targets.R"
+  - "shared/global_scripts/00_principles/.claude/rules/01-always.md"
+---
+
+## 摘要
+
+管線驗收 SHALL 在使用者可見的渲染層定義,**不**在資料庫寫入層。一次 `make run` 完成所有 derivation target **不** SHALL 視為成功,除非每個 dashboard tab,在每個 active platform 與 active product_line 下,都渲染滿足宣告的 per-element 契約(KPI 值閾值、DataTable 排除 placeholder 後的有意義列數、Plotly trace 數、filter dropdown 選項數)。在 DRV-end lite gate(NULL output 偵測)與 deploy-gate full gate(every-field 契約套件)硬性失敗(hard fail),防止資料庫正確填入但使用者看到空白儀表板的靜默失敗。
+
+## 動機
+
+GitHub issue #599(2026-05-10 自 `#595` close session 衍生為 meta-issue):在 `/idd-implement #595` close 階段,使用者觀察到 `#595` Phase A/B/C 已完成所有以下動作:
+
+- 修正 `app_config.yaml database.mode` 從 `duckdb` → `auto`(QEF_DESIGN / deploy bundle / D_RACING 共 3 PRs)
+- `dbConnect_universal()` fail-loud regression test 套件(鎖死禁止依賴靜默建空 DB)
+- `preflight_deploy_check.R` 阻擋 deploy-time 配置不一致
+- `check_production_data.R` 對部署的 Connect Cloud URL 跑 HTTP smoke
+
+…然而使用者本地跑 `Rscript app.R` 從 `l4_enterprise/QEF_DESIGN/` 仍能複現 QEF BrandEdge 儀表板無資料。Phase A/B/C verification chain 在其窄範圍(deploy mode、db connection、HTTP availability)內正確,但漏掉了 user 實際報告的 bug class — UI 層渲染失敗(在這次案例中是 3 個獨立根因:hardcoded 英文 empty-state、AI scoring 資料缺口致 50/54 列屬性全 NA、`translate()` 未 vectorize 觸發「the condition has length > 1」紅字)。
+
+> 觸發本原則的使用者觀察(2026-05-10):
+>
+> 「你可以說你是怎麼確認資料都會出現在儀表版上呢?就是我現在其實還先不用部署就看到 QEF 沒正常顯示了」
+>
+> 「test 必須檢視每一個欄位的數值」、「shinytest2 的 e2e 完整的 test」、「這些 test 是不是應該加入在 drv 的最後…這是原本 drv 需要補充的東西(也需要進入 principle)」
+
+隱含的架構承諾 — 「管線完成 = 使用者可見儀表板有資料」 — 從未被形式化。MP162 在 per-bridge L4 層級已 cover 此軸(至少一個 Shiny module 渲染 > 0 rows),但 `#595` 需要的 per-dashboard-tab × per-platform × per-product_line 顆粒度更細。MP163 在不同軸(input-completeness,非 rendering-acceptance)。MP165 補上這個 gap。
+
+## 原則陳述
+
+> 一次管線執行 SHALL 唯有當每個 active platform 與 active product_line 在公司配置中,每個 per-company 契約 YAML 宣告的 dashboard tab,均渲染滿足每個契約 assertion 時,才算成功。資料庫寫入完成是必要但不充分。未達到渲染驗收 SHALL 中止管線(DRV-end gate)或拒絕部署(deploy gate)。
+
+原則拆解為三個契約層,layered 以兼顧效能,加上強制執行的框架原語(primitives)。
+
+## Two-Axis 驗收框架(v1.1, 2026-05-13)
+
+本原則 SHALL 沿兩個正交軸實施 — **quality axis**(要驗證什麼)+ **context axis**(在哪個情境驗證,嚴格度多少)。兩軸必須同時滿足才達管線驗收。
+
+### Quality Axis(質量軸)
+
+- **Step 1: 不要紅字(No Red Errors)** — 所有使用者可見的 error 計數必為 0:
+  - 0 個 R `stop()` / uncaught error 漂到 Shiny output area
+  - 0 個 `[DEBUG_MODE_NULL_OUTPUT]` marker in `.shiny-debug/shiny.log`
+  - 0 個紅字 error text 在 UI 渲染(例:「the condition has length > 1」)
+  - 0 個 JavaScript console error 在 default sidebar 導航過程
+- **Step 2: 有意義結果(Meaningful Values)** — 所有使用者可見的 value 必為 informative:
+  - KPI cards 顯示數字符合宣告的 `op` / `threshold`
+  - DataTables 顯示 ≥ `min_rows` 列,**排除 placeholder rows**(`Ideal` / `Rating` / `Revenue`)後仍夠
+  - Plotly charts 顯示 ≥ `min_traces` 個非空 data array
+  - Filter dropdowns 暴露 ≥ `min_choices` 個有效選項
+  - 沒有 card 顯示 `-` / `NULL` / `NA` placeholder(該位置應該有真值)
+
+Step 1 是 Step 2 的必要但不充分:一個 tab 零紅字但每個 KPI 都顯示 `-` 是 **Step 1 PASS / Step 2 FAIL**。
+
+### Context Axis(情境軸)
+
+- **Local check(dev-time)** — 開發互動中執行:
+  - 工具:`Rscript app.R` + agent-browser snapshot + console grep
+  - 嚴格度:`severity: critical` 仍 fail-loud;`severity: warning` 報告但允許開發者繼續 iterate
+  - 頻率:開發者自主;建議每次 commit 前 + 每次切 branch 後
+  - 目的:在 edit-compile-test 循環中便宜抓 regression
+- **Deploy check(部署前 gate)** — `make deploy-push` 前自動執行:
+  - 工具:`shared/global_scripts/23_deployment/dashboard_presence_gate.R`
+  - 嚴格度:任何 `severity: critical` fail SHALL 拒絕 deploy push(non-zero exit)。`severity: warning` 報告但不阻擋。
+  - 頻率:每次 deploy;必要 gate
+  - 目的:防止生產 regress 到 local check 本該抓到的狀態
+
+兩個 context 用**同樣**的 per-company contract YAML 跟**同樣**的 `contracts.R` primitive helpers。差異只在 stringency 跟 runtime budget,**不是 contract 內容**。
+
+### 2×2 矩陣
+
+|                  | Step 1: 不要紅字                                                | Step 2: 有意義結果                                                          |
+| ---------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **Local check**  | dev `Rscript app.R` console + 瀏覽器 console:0 紅字 / 0 `[DEBUG_MODE_NULL_OUTPUT]` | dev 時 spot-check:KPI / DataTable 顯示非 placeholder 的 informative 值     |
+| **Deploy check** | `dashboard_presence_gate.R` 任何 `no_red_error_text` critical fail 拒絕 deploy | `dashboard_presence_gate.R` 任何 `assert_*meaningful*` critical fail 拒絕 deploy |
+
+2×2 cells 對應 **驗證 deliverable artifact**,不是 disjoint code path。
+
+## Tier ↔ Step 對映表(v1.1)
+
+Tier 系統(1 / 2 / 3)描述 check **何時** 跑(implementation timing);Step 系統(1 / 2)描述 check **驗證什麼**(quality criterion)。**兩者不一對一**。
+
+| MP165 Tier(timing)                | Step 1 covered?                                  | Step 2 covered?                                          | 主要 context |
+| ---------------------------------- | ------------------------------------------------ | -------------------------------------------------------- | --------------- |
+| Tier 1 lite(DRV-end)              | YES(`[DEBUG_MODE_NULL_OUTPUT]` marker 掃描)        | NO(只看 NULL,不檢查值)                                  | Local-ish(dev + CI 都跑)|
+| Tier 2 full(deploy-gate)          | YES(`no_red_error_text` assertion 跨全 UI)        | YES(KPI threshold + DataTable rows + Plotly + dropdowns)  | Deploy(嚴格)|
+| Tier 3 CI selective(per PR)       | YES(per-module subset)                          | YES(per-module subset)                                  | CI(PR-scoped) |
+
+意涵:
+
+- **Step 1 不是單一 Tier 任務**:`no_red_error_text` assertion 也出現在 Tier 2 跟 Tier 3 contracts。`[DEBUG_MODE_NULL_OUTPUT]` 是 Tier 1 的 fast signal,但 deploy-gate 會再驗一次。
+- **Step 2 不是 deploy-only 任務**:Local check SHALL 含 Step 2 spot-check,即使 dev-time 嚴格度比 deploy-gate 軟。
+- **2×2 框架住在 principle 層**,Tier 系統住在 implementation 層。未來新 contract primitive 可服務 Step 1 或 Step 2(或兩者),可在任何 Tier 跑。
+
+## Local Check 紀律(v1.1)
+
+Local check SHALL 用同樣的 contract YAML 跟 primitive helpers,但有兩個嚴格度放寬 + 一個 cadence 期待。
+
+### 嚴格度放寬
+
+1. **Warning 容許**:`severity: warning` contract failure 在 local check 期間 SHALL 報告(例如 console log)但 SHALL NOT 中止 dev session。
+2. **可選 `--severity-mode soft` flag**(當實作於 `run_smoke_lite.R` 或新建 `run_local_check.R`):把 critical failure 降級為 warning,僅限 local context。此 flag SHALL NOT 存在於 `dashboard_presence_gate.R`(部署 gate hard-fail discipline 不可妥協)。
+
+### Cadence
+
+- 建議:每次 commit 前跑 + 每次切 branch 後跑。
+- Required for fail-loud branches:當編輯共用 utility 被所有 module 用(例如 `fn_translation.R`),local check SHALL 跑完整 contract suite(對應 Tier 3 reverse-dependency 觸發)。
+
+### 工具
+
+- 主要:`nohup Rscript app.R` + `agent-browser` snapshot + console grep(per Tier 1/2 sections backbone choice)。
+- Diagnostic:`safari-browser` for live URL post-deploy verification(macOS only;native Safari,支援 tab 鎖定)。
+- 禁用 in local check:`shinytest2` AppDriver for dashboard-level walks(per `#604`/`#605` backbone amendment)。
+
+### 跟 Deploy Check 的差異
+
+| 面向          | Local check                                       | Deploy check                                        |
+| --------------- | ------------------------------------------------- | --------------------------------------------------- |
+| 觸發            | 開發者主動                                          | `make deploy-push` 前自動                            |
+| 嚴格度          | Warnings 容許;critical 仍 fail-loud                 | 任何 critical fail 阻擋 deploy;warning 報告不擋     |
+| Runtime budget  | 盡力即可(開發者自主)                                | ≤ 60s 硬上限 per company                             |
+| 失敗動作        | 開發者修 + 重跑                                     | 管線 abort;deploy 拒絕                              |
+| Coverage scope  | 完整或部分(開發者選擇)                              | 每個 active platform / PL 跑完整 contract suite      |
+
+## 雙軌制架構(v1.2, 2026-05-13)
+
+v1.2 顯性化儀表板渲染驗收的兩條互補 track,兩者都對 MP165 conformance 有貢獻:
+
+### Track A:Declarative Baseline(既有)
+
+人工維護的 `qef_design.yaml` / `d_racing.yaml` / `mamba.yaml` / `wiser.yaml` / `kitchenmama.yaml` contract 檔,搭配 `contracts.R` primitive library + `dashboard_presence_gate.R` runner。寫作者明確宣告每個 selector + assertion。可審計、確定性、版本控制。**儀表板測試的 floor** — 我們已知要測什麼。
+
+特性:
+- Closed-world 覆蓋:只評估已宣告的 selector
+- 可重現的 CI / deploy-gate 行為
+- 人工維護 — 覆蓋增長與寫作者投入成正比
+
+### Track B:Adaptive Overlay(新,v1.2)
+
+`/shiny-adaptive-walk` skill(在 `r-shiny-debugger` plugin v1.1+)執行 self-converging loop,發現 baseline 之外的 defects。每個 iteration:
+
+1. 透過 safari-browser 走訪 dashboard(真實 macOS 渲染 = 使用者 ground truth)
+2. LLM judge 分類每個可見 defect:`real_bug` / `test_infra_gap` / `acceptable`
+3. 分流動作:
+   - `real_bug` → file `/idd-issue`(skill 不動 production code)
+   - `test_infra_gap` → skill 自動 mutate Track A 檔(yaml / primitives / walker)
+4. Per-iter safety gate(test_dir + mechanical gate)+ regression 時 auto-rollback
+5. Convergence:CONVERGED / PLATEAUED / DIMINISHING(沿用 MP102 v1.3 `/glue-bridge` pattern)
+
+**儀表板測試的 ceiling** — 我們不知道該測但其實該測什麼。
+
+特性:
+- Open-world 覆蓋:walker 發現 leaf sub-tab + LLM judge 揭露未知 defects
+- Skill mutations 透過 git diff 可見(每個 iter = 一個 commit)
+- 覆蓋透過 convergence loop 增長,由 `MP165_ADAPTIVE_BUDGET` LLM call cap 限制
+
+### (C)Aggressive 測試框架權限
+
+Track B 在 **(C) Aggressive 權限**下運作,skill 可編輯**可變區**的任何檔:
+
+- `shared/global_scripts/98_test/e2e/contracts/*.yaml`
+- `shared/global_scripts/98_test/e2e/contracts/contracts.R`
+- `shared/global_scripts/98_test/e2e/run_smoke_lite.R`
+- `shared/global_scripts/98_test/e2e/test-*.R`
+- `shared/global_scripts/23_deployment/dashboard_presence_gate.R`
+- `shared/global_scripts/04_utils/fn_debug_mode.R`
+
+Skill **不可**編輯**不可變區**的檔(改 file `/idd-issue`):
+
+- `shared/global_scripts/10_rshinyapp_components/**`(UI 元件)
+- `shared/global_scripts/16_derivations/**`(商業邏輯)
+- `shared/global_scripts/04_utils/fn_analysis_*.R`(分析函數)
+- `shared/update_scripts/ETL/**`、`shared/update_scripts/DRV/**`(管線)
+- 任何 `.qmd` principle 檔(只有人能決定)
+
+Pre-mutation glob check 在 skill spec 內 hard-coded。不可變區的 mutation 嘗試 = skill bug。
+
+### Track 收斂
+
+兩條 track 互補,不競爭:
+
+- Track B 發現 defect → file issue(`real_bug`)或加 contract 到 Track A `# === auto-suggested ===` 區(`test_infra_gap`)
+- Track A contracts 由 `dashboard_presence_gate.R` 評估 — Track B 的 mechanical regression 步
+- Yaml 的 hand-maintained 區段對 Track B 不可變(MP159 Layer 1 immutability 的姊妹規則)
+
+**Declarative 是 floor;adaptive 是 ceiling。** 兩軸都成立才算完整 MP165 conformance。
+
+## DRV 層 Step 2 傳遞(v1.3, 2026-05-14)
+
+v1.1 引入 **Step 2「有意義的值」(Meaningful Values)** 作為 quality 軸的驗收條件,在 dashboard 層 enforce(KPI > 閾值、DataTable 排除 placeholder 後列數 ≥ min、Plotly traces 非空、dropdowns ≥ min_choices)。v1.2 加入雙軌制架構(Track A declarative + Track B adaptive)於該 dashboard 層 enforcement。**v1.3 把 Step 2 傳遞到 DRV 層。**
+
+### v1.3 動機的 vacuous-pass 漏洞
+
+Dashboard 層 Step 2 gate 只會在 user 走訪受影響 sub-tab 後才抓到 DRV vacuous-pass case(DRV 管線報告成功但產出空 / 部分 output 表)。2026-05-13 跨公司 adaptive walk(issue [#668](https://github.com/kiki830621/ai_martech_global_scripts/issues/668))發現的三個具體案例:
+
+- **D_RACING amz**:`df_amz_poisson_analysis_all` 表根本不存在(DRV 從未被呼叫)— 儀表板渲染了優雅的空狀態,但管線報告完全成功。
+- **QEF_DESIGN amz**:`df_amz_poisson_analysis_all` 存在且有 189 列,但**只有** `predictor_type = time_feature`(沒有 `comment_attribute` / `product_attribute` 列)。儀表板 InsightForge sub-tab 依賴非時間 predictor type 的部分渲染 `--` placeholder。
+- **MAMBA cbz**:同樣的 predictor_type-distribution 問題,65 列但缺所需類型。
+
+這三個案例都通過儀表板的 Step 1「不要紅字」(無 `Error:` 文字、空狀態 UI path 無 `[DEBUG_MODE_NULL_OUTPUT]`),卻違反了 Step 2「有意義的值」— 而違規點在**儀表板上游**,在 DRV 輸出 shape 本身。儀表板層是這類 defect 的錯誤 enforcement 點。
+
+### v1.3 的 normative 增訂
+
+DRV pipelines SHALL 在管線最終 target 呼叫一個 output-shape gate。Gate SHALL 在三個層級驗證每個宣告的 DRV 輸出:
+
+- **L1 表存在**(必要):指定的 DuckDB 表 SHALL 存在於 `app_data.duckdb`。
+- **L2 列數下限**(必要):表 SHALL 包含至少 `l2_row_count_min` 列。
+- **L3 predictor-type 分布**(選用,適用時):有 `predictor_type` 欄位的表 SHALL 對每個宣告的 required predictor_type 至少有 `min_count_per_type` 列。
+
+契約 SHALL 住在 `shared/global_scripts/98_test/e2e/contracts/<company>_drv.yaml`,與既有儀表板 `<company>.yaml` 並列(**不**塞進同一檔案)。Gate 腳本 `shared/global_scripts/23_deployment/drv_output_shape_gate.R` 獨立於 `dashboard_presence_gate.R`(input source 不同:DBI 對 DuckDB 表 vs headless browser 對 Shiny UI 元素),但**共用** `contracts.R` primitive library(可適用部分)。
+
+### Two-axis 框架,v1.3 重述
+
+| Quality 軸 | Enforcement 層 | 機制 |
+|---|---|---|
+| Step 1:不要紅字 | 儀表板層 | `[DEBUG_MODE_NULL_OUTPUT]` 掃描 + `no_red_error_text` assertion |
+| **Step 2:有意義的值** | **DRV 層(v1.3 新增)** | **`drv_output_shape_gate.R` 對 `<company>_drv.yaml`** |
+| Step 2:有意義的值 | 儀表板層(v1.1 既有) | `assert_kpi_card_value` / `assert_datatable_meaningful_rows` / `assert_plotly_has_data_points` 等 |
+
+Step 2 在**兩層**都 enforce,因為兩層失敗方式不同。DRV 層 enforcement 讓 producer 端 vacuous-pass 不可能發生。儀表板層 enforcement 抓 consumer 端的 regression(例如 DRV 輸出沒問題但 Shiny module filter 把它過濾掉)。Defense in depth。
+
+### MP163 sentinel 邊界
+
+Sentinel 涵蓋的列(`'unclassified'`、`'UNKNOWN'`、per-domain MP163 marker)SHALL 預設計入 L2 與 L3。它們是 MP163 Progressive Completeness 的顯性 gap marker,**不是**缺漏資料。拒絕 sentinel 列會迫使管線在輸入不完整時 `stop()`,直接違反 MP163「永遠可跑」的核心。
+
+每個 contract 的選用 `sentinel_ratio_max`(預設關)在 sentinel 列超過總列數可設定比例時發出**警告**。這抓到 sentinel 掩蓋真正上游覆蓋問題的 case,但不會讓預設行為跟 MP163 衝突。
+
+### 30 天 warn-mode 過渡期
+
+v1.3 amendment merge 後 30 天(預設 sunset 2026-06-13),gate 預設 warn-mode 運作:某個 registered pipeline 缺 `<company>_drv.yaml` SHALL 發 WARNING 但 SHALL NOT 阻擋 `make run`。Sunset 後預設翻成 strict-mode:缺 contract SHALL 硬性失敗。模式對齊 MP102 v1.3 的 `reviewed_by` legacy-format sunset 窗(legacy 接受至 2026-07-31,之後強制結構化)。Per-company sunset 前 opt-in strict-mode 透過 `<company>_drv.yaml` 內 `strict_mode: true`。
+
+### 為何是 v1.3 amendment 不是姊妹 MP166
+
+v1.1 已經把 Step 2 framed 為跨層適用的 quality 軸。儀表板層是第一個 instance;DRV 層是第二個。概念上是同一原則的兩個 enforcement 點,不是兩個原則。姊妹 MP166 會有同樣的 Step 2 詞彙與高 cross-reference density — 強訊號表示「一個原則,兩個 enforcement 點」。MP102 也是類似(v1.0 → v1.3,每次 amendment 加嚴謹度而不分裂)。
+
+## Tier 1:DRV-End Lite Check(NULL Output 偵測)
+
+`update_scripts/DRV/_targets.R` SHALL 包含一個最終 target `dashboard_smoke_lite`,在所有 5NM 層 derivation 完成後執行。該 target SHALL 啟動 headless Shiny session 並設 `SHINY_DEBUG_MODE=TRUE`,逐一走訪預設 sidebar nav 狀態的每個 active platform 與 product_line,並檢查 `.shiny-debug/shiny.log` 是否含有 `[DEBUG_MODE_NULL_OUTPUT]` 標記(由 `04_utils/fn_debug_mode.R::debug_log_output()` 發出)。
+
+任何 NULL render output SHALL 致該 target 失敗。管線重建 SHALL 失敗,並印出識別 `(company, tab, platform, product_line, output_id)` 的結構化訊息。
+
+**執行時間預算**:目標 ≤ 5 秒,每公司硬性上限 30 秒。設計上夠便宜以便每次 `make run` 都跑。
+
+## Tier 2:Deploy-Gate Full Contract Suite
+
+`shared/global_scripts/23_deployment/dashboard_presence_gate.R` SHALL 在 `make deploy-push` 呼叫 `rsconnect` 前執行。Gate 載入 per-company 契約 YAML(位於 `shared/global_scripts/98_test/e2e/contracts/<company_lowercase>.yaml`),對每個 `(active_platform, active_product_line)` tuple 啟動一次 headless Shiny,並透過 `contracts.R` 的原語 helpers 評估每個契約。
+
+任一 `severity: critical` 契約失敗 SHALL 致 gate 以非零狀態結束並拒絕 deploy push。`severity: warning` 契約 SHALL 被回報但 SHALL NOT 阻擋 deploy。
+
+**執行時間預算**:每公司 ≤ 60 秒。可接受,因為 deploy 不是頻繁操作。
+
+## Tier 3:CI Selective per Pull Request
+
+CI workflow SHALL 讀取 PR 的 `git diff --name-only`(head 與 base 之間),透過 `shared/global_scripts/98_test/e2e/affected_modules.R` 將變動路徑映射到模組識別碼,並只跑對應的契約子集。Workflow SHALL 在 30 秒內完成典型 PR(觸動 1-2 個模組)。
+
+PR 觸動所有模組共用的 utility(例:`fn_translation.R`)SHALL 觸發完整契約套件 — 選擇性是依 reverse-dependency,不單依檔案路徑。
+
+## 契約原語 Library
+
+`shared/global_scripts/98_test/e2e/contracts/contracts.R` SHALL 至少提供五個 per-element-type assertion 原語:
+
+| 原語                                  | 斷言                                                                                       |
+| ------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `assert_kpi_card_value`               | KPI 卡片顯示值滿足 `op`(`>=`、`>`、`==`)對 `threshold` 的條件                              |
+| `assert_datatable_meaningful_rows`    | DataTable 排除 placeholder 列(`Ideal`、`Rating`、`Revenue`)後 ≥ `min_rows` 列              |
+| `assert_plotly_has_data_points`       | Plotly chart 有 ≥ `min_traces` 個非空 data array trace                                      |
+| `assert_filter_dropdown_choices`      | Filter selectize / dropdown 填入 ≥ `min_choices` 個有效選項                                 |
+| `assert_chart_axis_non_empty`         | 指定 chart 軸(`x` 或 `y`)的 tick label 已填入                                              |
+
+原語 SHALL 接受一致的呼叫慣例 `(app, selector_id, ..., severity = "critical")`。
+
+`assert_datatable_meaningful_rows` 的預設 `exclude_placeholders = TRUE` 是相對既有弱契約 `assert_datatable_has_rows(min_rows = 1)` 的關鍵強化 — 既有契約在 QEF hsg 只剩 1 列(`Ideal` placeholder)時錯誤地通過,漏掉真正的資料缺口。
+
+## Per-Company 契約 YAML Schema
+
+```yaml
+company: <COMPANY_NAME>
+modules:
+  <module_name>:
+    enabled: true | false
+    sub_tabs:
+      <tab_id>:
+        active_product_lines: [<id>, ...]
+        contracts:
+          - selector: <ns_id>
+            assertion: "<expression evaluated against the rendered output>"
+            severity: critical | warning
+```
+
+Per-company YAML 位於 `shared/global_scripts/98_test/e2e/contracts/<company_lowercase>.yaml`。沒啟用某模組的公司(例:KITCHENMAMA 沒 BrandEdge)SHALL 把該模組的 `enabled` 設為 `false` 用於文件化記錄,**或**直接省略該模組。自然 opt-out 路徑是公司 `update_scripts/DRV/_targets.R` 中對應 DRV target 不存在 — declarative dependency 確保契約 target 在來源 DRV 不存在時不執行。
+
+## 硬性失敗紀律
+
+框架 SHALL NOT 支援全域 `soft_warn_mode` 開關以將所有 critical 契約降級為警告。唯一 opt-out 路徑為:
+
+1. 公司不啟用對應 DRV(declarative dependency 自然 opt-out)。
+2. 契約在 YAML 顯式宣告 `severity: warning`(Tier 2 回報但不阻擋 deploy;Tier 1 不看 severity,因 Tier 1 只查 NULL output)。
+
+硬性失敗對齊使用者「打通 + 不會紅字」要求(管線必須通且使用者端不能看到紅字)。在 DRV gate 早期 fail-loud,防止使用者畫面晚期出現紅字。
+
+## 框架實作 backbone:nohup Rscript + agent-browser(非 shinytest2)
+
+Tier 1 lite(`run_smoke_lite.R`)與 Tier 2 deploy gate(`dashboard_presence_gate.R`)透過以下 path 驅動公司 Shiny app:
+
+```
+nohup Rscript app.R > .shiny-debug/shiny.log 2>&1 &
+agent-browser open http://127.0.0.1:<port>
+agent-browser snapshot -i  # 取 element refs
+agent-browser fill / click # 登入 + 走訪頂層 nav
+# 讀 .shiny-debug/shiny.log 中的 [DEBUG_MODE_NULL_OUTPUT] markers
+```
+
+刻意**不**用 `shinytest2`。經驗依據:`#604` 與 `#605` 顯示即使 reactive cross-tab leak(`#603`)已 gated,shinytest2 的 stability detector 在 plotly heavy 初始 render 仍 abort;且 shinytest2 的 chromote subprocess 寫到 temp dir,不寫到 `04_utils/fn_debug_mode.R::debug_log_output()`(DEV_R054)所寫入的 `.shiny-debug/shiny.log`。
+
+**約束條件**:
+
+- **Tier 1 lite**:agent-browser 確定性導航時序;不受 plotly stability detector race 影響。
+- **Tier 2 deploy gate**:同 Tier 1 backbone;v2 僅評估 NULL-output markers(per-element DOM contracts 延後到 v3 — 透過 `agent-browser snapshot --page` 加 DOM extraction helper)。
+- **Tier 3 CI selective**:`affected_modules.R` 選 subset;CI 用同一 gate,agent-browser 在 GitHub Actions headless Chromium 下執行。
+
+**`shinytest2` 保留給 `98_test/e2e/test-*.R` 單元類測試**(單 output value assertion)。Dashboard 層級 e2e(per-tab × per-platform × per-product_line walk)則以 Rscript + agent-browser backbone 為框架標準。
+
+**既有 test 的 escape hatch**:`test-brandedge.R` 暴露 `MP165_USE_AGENT_BROWSER=true` env var,將 L1 test 委派給 `run_smoke_lite.R`。預設保留 `shinytest2` 以對齊既有 CI 工作流。
+
+**跨平台註記**:`agent-browser`(跨平台 Chromium via Puppeteer)是主工具。`safari-browser`(macOS native Safari)是 live URL 部署後驗證的替代(例:MAMBA Posit Connect Cloud)。兩者共享 snapshot/click ref-based API,任何寫給 agent-browser 的 helper 都可以靠改 CLI 名稱切換到 safari-browser。
+
+**IC_P002 跨公司驗證 2026-05-10**:backbone 在 QEF_DESIGN(119 contracts、18.6s)、D_RACING(13 contracts)、MAMBA(10 contracts)PASS。同一份 `run_smoke_lite.R` + `dashboard_presence_gate.R` 適用 3 家公司,無需 per-company code 客製。
+
+## 反模式
+
+| 反模式                                                                | 為何錯誤                                                                                  |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `assert_datatable_has_rows(min_rows = 1)` 不排除 placeholder            | 1 列 `Ideal` placeholder 通過;漏掉真正資料缺口                                             |
+| 加 `soft_warn_mode = TRUE` 跳過失敗的契約                               | 破壞 gate;使用者要求「不會紅字」需要硬性失敗                                                |
+| 對有 active DRV 的模組設 `enabled: false`                              | 不一致狀態 — DRV 寫資料但契約跳過;會 surface 為 deploy gate skip                            |
+| 只跑 Tier 1 lite(跳過 Tier 2 deploy gate)                              | NULL 偵測必要但不充分 — every-field assertion 才能抓到 1 列案例                              |
+| 在 R 程式碼 hardcode 契約閾值,不放在公司 YAML                          | 跨公司維護摩擦;QEF 品牌數 != D_RACING 品牌數                                                |
+| 跳過契約 YAML 的 `IC_P002` 跨公司驗證                                   | 跨公司影響需顯式依 `IC_P002` 紀律驗證                                                       |
+
+## 合規模式
+
+| 合規模式                                                                                        | 為何正確                                                                              |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `assert_datatable_meaningful_rows(min_rows = 5, exclude_placeholders = TRUE)`                  | 抓到 `#595` reproduction 中的 `Ideal` 唯一列案例                                        |
+| Tier 1 lite 在 DRV-end + Tier 2 full 在 deploy-gate(layered)                                   | 尊重效能預算(每次 `make run` 5s,不頻繁的 deploy 才 60s)                              |
+| `severity: warning` 用於尚未完整實作的 tabs                                                     | 允許漸進式 rollout 同時仍 surface gap                                                   |
+| KITCHENMAMA 完全省略 BrandEdge 契約(依賴 DRV target 不存在)                                    | Declarative dependency 自然 opt-out                                                   |
+| Per-company YAML 閾值(QEF `min_brands: 5`、D_RACING `min_brands: 3`)                           | 公司專屬 tuning 不需 R 程式碼變更                                                       |
+| 契約 YAML loader 啟動時 schema 驗證,給 actionable 錯誤訊息                                       | 在契約執行前 surface typo                                                              |
+
+## 受本原則約束的檔案
+
+| 檔案                                                                                | 角色                                                                          |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `shared/global_scripts/98_test/e2e/contracts/contracts.R`                           | 原語 helpers(框架骨幹)                                                       |
+| `shared/global_scripts/98_test/e2e/contracts/<company_lowercase>.yaml`              | 公司專屬契約宣告                                                              |
+| `shared/global_scripts/98_test/e2e/test-*.R`                                        | 既有 e2e 測試強化以呼叫原語                                                    |
+| `shared/global_scripts/23_deployment/dashboard_presence_gate.R`                     | Tier 2 deploy gate                                                            |
+| `shared/update_scripts/DRV/_targets.R`                                              | Tier 1 lite target plumbing                                                   |
+| `shared/global_scripts/04_utils/fn_debug_mode.R`                                    | Tier 1 使用既有 `debug_log_output()` helper                                    |
+| `shared/global_scripts/00_principles/.claude/rules/01-always.md`                    | Layer 3 quick reference(DOC_R009 同步)                                        |
+| `shared/global_scripts/00_principles/llm/CH00_meta.yaml`                            | Layer 2 LLM 索引(DOC_R009 同步)                                              |
+
+### 變更紀律
+
+對受約束檔案的修改 SHALL 遵守:
+
+- `IC_P002` 跨公司驗證(5 公司必須驗證):commit 訊息含 `Verified:` trailer
+- `DOC_R009` 三層同步:任何 spec / threshold / principle 變更依序更新 `.qmd`(Layer 1,本檔)→ `llm/*.yaml`(Layer 2)→ `.claude/rules/*.md`(Layer 3)
+- `MP029` verify-before-acting:契約新增 SHALL 由實際 reproduction 案例觸發,非推測
+
+## 姊妹原則交叉引用
+
+### MP162 作為 per-bridge 互補
+
+MP162 governs per-bridge ship-readiness 軸(L1-L5)。MP162 L4 要求至少一個 Shiny module 為該 bridge 的下游資料渲染 > 0 rows。MP165 是 per-dashboard-tab × per-platform × per-product_line 互補 — 顆粒度更細,unit 更廣。兩者皆需滿足才能達到 production-ready 資料流。
+
+### MP163 作為正交互補
+
+MP163 governs input-completeness 軸:人工輸入缺漏時管線繼續跑,gap 以 sentinel 顯現。MP165 governs rendering-acceptance 軸:唯有每個 tab × platform × product_line 渲染滿足契約管線才算成功。兩者正交 — 兩軸都必須滿足才達到使用者可見完整性。一條管線可以滿足 MP163(graceful 用 sentinel 收 gap)但失敗 MP165(那些 gap 渲染為使用者可見的空 tab,沒給使用者可操作提示),反之亦然。
+
+### MP102 v1.3 作為上游契約層
+
+MP102 v1.3 governs bridge yaml 寫作契約(reviewed_by 結構化、sibling review log、四 agent self-converging review)。MP165 在下游:bridge yaml 正確 + DRV 管線完成是必要但不充分,使用者可見完整性還需要渲染層自身的驗收契約。
+
+### MP029 作為 verify-before-acting 對齊
+
+MP029 要求對 fake information 的 verify-before-acting。MP165 契約 assertion 是具體的 reproduction:1 列 `Ideal` placeholder 即使 row count ≥ 1 在使用者觀感上仍是空。強化的 `assert_datatable_meaningful_rows` 原語在渲染邊界 operationalize MP029。
+
+## 觸發 issues 與 reproduction
+
+- `#595`:QEF BrandEdge + TagPilot 儀表板對使用者反覆無資料;reproduction 文件化於 `#595` re-diagnose comment 4413773856
+- `#599`:meta-issue 捕捉 `#595` close 階段 surface 的 acceptance ladder gap
+- `#600`:BrandEdge 5 個姊妹 sub-tabs 的 hardcoded 英文 empty-state(超出 MP165 範圍;UX 議題)
+- `#601`:QEF hsg AI scoring 資料缺口(超出 MP165 範圍;資料品質議題)
+
+## Spectra Change
+
+`dashboard-presence-verification`(2026-05-10):引入 MP165 + 框架 + Tier 1/2/3 整合。實作任務追蹤於 `openspec/changes/dashboard-presence-verification/tasks.md`。
+
+## Change Log
+
+### v1.3(2026-05-14)— DRV 層 Step 2 傳遞
+
+GitHub issue:[#668](https://github.com/kiki830621/ai_martech_global_scripts/issues/668)
+
+**架構 amendment + 新 section,把 Step 2「有意義的值」enforcement 從儀表板層傳遞到 DRV 層。**
+
+變更內容:
+
+- **新 section:DRV 層 Step 2 傳遞** — 顯性 codify Step 2 quality 軸在 DRV 層 enforcement,透過新的 `drv_output_shape_gate.R` 腳本與 per-company `<company>_drv.yaml` contracts。關上 DRV 管線報告成功但產出空 / 部分 output 表的 vacuous-pass 漏洞(三個具體 case:D_RACING amz 表缺、QEF amz predictor_type 分布不完整、MAMBA cbz 同樣 pattern)。
+- **3-level 顆粒度形式化**:L1 表存在(必要)+ L2 列數下限(必要)+ L3 predictor-type 分布(選用,適用時)。兩層太粗 — 空 time_feature 也會被漏掉。
+- **MP163 sentinel-cover 邊界** — sentinel 預設計入 L2 與 L3(不破壞 Progressive Completeness);選用 `sentinel_ratio_max` warning 給 opt-in 偵測 mask-by-sentinel 反 pattern。
+- **30 天 warn-mode 過渡期** — 預設 warn-mode 至 2026-06-13 sunset,之後 strict-mode;per-company `strict_mode: true` opt-in 可在 sunset 前。對齊 MP102 v1.3 `reviewed_by` legacy-format sunset 模式。
+
+**未變部分**(向後相容):
+
+- v1.0 / v1.1 / v1.2 所有 section 不變繼續適用。
+- 既有 Track A contract yaml(`qef_design.yaml` / `d_racing.yaml` / `mamba.yaml`)繼續運作 — 它們治儀表板層 enforcement,跟新 DRV 層 yaml 正交。
+- 既有 `contracts.R` primitives 繼續運作 — 新 gate 用 DBI 直查,只在可適用處共用 primitive library。
+- Track B(`/shiny-adaptive-walk`)繼續治儀表板層 adaptive overlay — DRV gate 是分離的軸。
+
+**為何現在**:2026-05-13 跨公司 adaptive walk(issue #653 Phase 5)surfacing 多個公司 DRV 層 systematic vacuous-pass。透過 `/spectra-discuss` 收斂,鎖定 6 個 design decision:
+
+1. MP165 v1.3 amendment(**不是**姊妹 MP166)
+2. 獨立 `drv_output_shape_gate.R`(**不是**對 `dashboard_presence_gate.R` 加 `--mode drv` flag)
+3. 獨立 `<company>_drv.yaml` per company(**不是**塞 `app_config.yaml`)
+4. 3-level 顆粒度(L1 + L2 + L3 選用)
+5. 30 天 warn-mode → strict-mode 過渡
+6. MP163 sentinel 預設 pass;`sentinel_ratio_max` opt-in warning
+
+**三層同步**(per DOC_R009):
+
+- Layer 1 .qmd(en + zh):本檔 + en mirror
+- Layer 2 `llm/CH00_meta.yaml`:MP165 entry `version: 1.3`,DRV 層 Step 2 詞彙進入 `one_liner` + 新 `rule_natural` 子規則
+- Layer 3 `.claude/rules/01-always.md`:MP165 quick reference 追加 DRV 層 gate(v1.3)句
+
+**Spectra change**:`mp165-drv-output-shape-gate`(`openspec/changes/mp165-drv-output-shape-gate/`,5-phase tasks)。v1.3 amendment 是該 change 的 Phase 1。
+
+### v1.2(2026-05-13)— 雙軌制架構 + Aggressive 測試框架權限
+
+GitHub issue:[#653](https://github.com/kiki830621/ai_martech_global_scripts/issues/653)
+
+**架構修訂 + 新區段,為新 `/shiny-adaptive-walk` skill 編寫 Track A / Track B / (C) authority 顯性規範**。
+
+修訂內容:
+
+- **新區段:雙軌制架構** — 顯性編寫 Track A(declarative baseline,既有)+ Track B(adaptive overlay,新 `/shiny-adaptive-walk` skill)。先前 Track A 存在但是唯一 track;沒有 principle backing 的 Track B 會變 ad-hoc。
+- **(C)Aggressive 權限規範** — 顯性 mutable-zone 白名單給 Track B skill 改測試框架 + immutable-zone 黑名單(production code)走 `/idd-issue`。
+- **Track 收斂論述** — declarative 是 floor,adaptive 是 ceiling。兩軸都成立才完整 MP165 conformance。
+
+未修訂(backward compatibility):
+
+- 所有 Track A 既有 contracts(`qef_design.yaml` / `d_racing.yaml` / `mamba.yaml`)持續可用
+- 所有 `contracts.R` 既有 primitives 持續可用(+ 3 個 Phase 1 新增:`assert_no_error_text`、`assert_no_hardcoded_english`、`assert_kpi_no_error_placeholder`)
+- 所有 Tier 1/2/3 runners 持續可用(`run_smoke_lite.R` 透過 Phase 2 加遞迴 sub-tab walk,backward compat 透過 `recurse_sub_tabs = FALSE`)
+- v1.1 Two-Axis 框架(Step 1 / Step 2 × Local / Deploy)持續適用,現在多了 Track A / Track B 作為正交軸(timing × quality × context × architecture)
+
+**為什麼現在做**:issue #653 user-visible defects(QEF amz dashboard F1-F5)逃過 v1.0/v1.1 declarative gate 119/119 PASS,原因是(a)walker 不走 sub-tabs(b)`qef_design.yaml` 在 InsightForge 模組有覆蓋缺口(c)primitives 缺少 `Error: [object Object]` blocklist。5 個 defect 是 real bugs;gate gap 是覆蓋完整性缺口。Track B 是架構回應 — 讓 adaptive discovery 補 coverage 缺口,且不違反 Track A 人工維護的權威狀態。
+
+**三層同步**(per DOC_R009):
+
+- Layer 1 .qmd(en + zh):本檔 + en 鏡像
+- Layer 2 `llm/CH00_meta.yaml`:MP165 entry `version: 1.2` 在 `one_liner` 加 Track A/B 詞彙 + 新增 `rule_natural` 子條(7)規範雙軌 + mutation boundary
+- Layer 3 `.claude/rules/01-always.md`:MP165 quick reference 加 Track A/B(v1.2)+ `MP165_ADAPTIVE_BUDGET` env var
+- Layer 3 `.claude/rules/08-shiny-testing.md`:narrow exception 段補引用 `/shiny-adaptive-walk` 作為 canonical 例外案例
+
+**Plugin 耦合**:
+
+- `r-shiny-debugger` plugin v1.1+(在 `PsychQuant/psychquant-claude-plugins`)提供 `/shiny-adaptive-walk` command,實作本 principle 的 Track B authority
+- Plugin version 必須 ≥ 1.1 才能調用 adaptive-walker skill
+
+**Spectra change**:`adaptive-dashboard-test-loop`(`openspec/changes/adaptive-dashboard-test-loop/`,多 phase)。v1.2 amendment 是該 change 的 Phase 4。
+
+### v1.1(2026-05-13)— Two-Axis Step 1/Step 2 × Local/Deploy 框架
+
+GitHub issue:[#648](https://github.com/kiki830621/ai_martech_global_scripts/issues/648)
+
+**Vocabulary 補強,無 normative behavior change**。既有 Tier 1/2/3 契約執行不變。v1.1 加入 explicit 兩軸 vocabulary(原 v1.0 是 implicit):
+
+- **新 section: Two-Axis 驗收框架** — 切開 quality axis(Step 1 不要紅字 / Step 2 有意義結果)跟 context axis(Local check / Deploy check)。
+- **新 section: Tier ↔ Step 對映表** — disambiguation table 澄清 Tier 1 ≠ Step 1;Tier 系統是 timing,Step 系統是 quality criterion。
+- **新 section: Local Check 紀律** — explicit local context 規範(warning 容許 / 嚴格度放寬 / cadence)跟 deploy-gate hard-fail 紀律差異化。
+
+**Rationale**:v1.1 之前,Step 1 / Step 2 quality criteria 隱含在 contract primitive function 語意內(`assert_kpi_card_value` 隱式 = Step 2;`no_red_error_text` 隱式 = Step 1)沒 principle 層 codify。Local vs deploy 嚴格度差異隱含在「硬性失敗紀律」section 但沒 explicit 切為正交 context 軸。v1.1 把兩軸升為 first-class principle vocabulary,讓未來 verification work 能機械對齊(例:「本 issue 在 Local context 驗證 QEF amz dashboard Step 2」)。
+
+**向後相容**:所有既有 contract YAML(`qef_design.yaml` / `d_racing.yaml` / `mamba.yaml`)、所有既有 `contracts.R` primitive helpers、所有既有 Tier 1/2/3 runners(`run_smoke_lite.R` / `dashboard_presence_gate.R`)都不動。Amendment 純粹是 principle 層 additive。
+
+**Triple-layer sync**(per DOC_R009):
+
+- Layer 1 .qmd(en + zh):本檔 + en mirror
+- Layer 2 `llm/CH00_meta.yaml`:MP165 entry 更新到 `version: 1.1`,`one_liner` 含 Two-Axis vocabulary + 新 `rule_natural` sub-rule (6)
+- Layer 3 `.claude/rules/01-always.md`:MP165 quick reference append Two-Axis(v1.1)句
+
+### v1.0(2026-05-10)
+
+首版發布。引入 Tier 1/2/3 enforcement 框架、`contracts.R` 5 個 contract primitive、per-company contract YAML schema、hard-fail discipline(無 `soft_warn_mode` global toggle)、`nohup Rscript + agent-browser` backbone(非 shinytest2,per `#604`/`#605`)。IC_P002 cross-co PASS:QEF_DESIGN(119 contracts)/ D_RACING(13)/ MAMBA(10)。
+
+觸發:`#599`(2026-05-10 自 `#595` reproduce 衍生)— `/idd-implement #595` Phase A/B/C 驗證鏈 over-claim acceptance 儘管 QEF BrandEdge dashboard 對 user 渲染為空。

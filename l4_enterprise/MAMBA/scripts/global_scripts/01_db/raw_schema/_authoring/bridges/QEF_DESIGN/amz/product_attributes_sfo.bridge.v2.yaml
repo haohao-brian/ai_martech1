@@ -1,0 +1,326 @@
+prerawdata_source:
+  company: QEF_DESIGN
+  platform: amz
+  source_type: csv
+  source_uri: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_sfo.csv
+  sheet_name: ~
+  schema_fingerprint:
+    algorithm: sha256
+    value: 930e0b74d92109f87fc12817b3ea1512bffd59310698f162cfe926ba4feeae76
+    fingerprinted_against: df_product_profile_sfo.csv (full read via readr::read_csv,
+      48 rows)
+    fingerprinted_at: '2026-05-05T19:00:00Z'
+canonical_target:
+  datatype: product_attributes_sfo
+  platform: amz
+  table: df_amz_product_attributes_sfo___raw
+  schema_yaml_path: 01_db/raw_schema/_authoring/companies/QEF_DESIGN/product_attribute_schemas.yaml
+  platform_extension_yaml_path: 01_db/raw_schema/_authoring/platform_extensions/amz_extensions.yaml
+pre_filter:
+- column: 品牌
+  exclude_na: yes
+- column: 銷售平台
+  exclude_na: yes
+field_extractors:
+  brand:
+    type: column
+    name: 品牌
+  sales_platform:
+    type: column
+    name: 銷售平台
+  sku:
+    type: column
+    name: SKU
+  asin:
+    type: column
+    name: ASIN
+  product_name:
+    type: column
+    name: 商品名稱
+  rank:
+    type: column
+    name: 排名
+  is_competitor:
+    type: column
+    name: 競爭對手
+  color_lens:
+    type: column
+    name: 鏡片顏色
+  rating_no_distortion:
+    type: column
+    name: 無失真
+  rating_comfortable_wear:
+    type: column
+    name: 穿戴舒適
+  rating_durability:
+    type: column
+    name: 耐用性
+  rating_clear_vision:
+    type: column
+    name: 視野清晰
+  review_rating:
+    type: column
+    name: 評論星級
+  review_count:
+    type: column
+    name: 評論則數
+  url:
+    type: column
+    name: 網址
+  is_benchmark_product:
+    type: column
+    name: 標竿產品
+  price:
+    type: column
+    name: 價格
+  quantity:
+    type: column
+    name: 數量
+  color_frame:
+    type: column
+    name: 鏡框顏色
+  material_frame:
+    type: column
+    name: 鏡框材質
+  material_lens:
+    type: column
+    name: 鏡片材質
+  material_nose_pad:
+    type: column
+    name: 鼻墊材質
+  material_temple_tip:
+    type: column
+    name: 鏡腳末端材質
+  dimension_frame_width:
+    type: column
+    name: 鏡框寬度
+  dimension_frame_max_width:
+    type: column
+    name: 鏡框最大寬度
+  dimension_frame_height:
+    type: column
+    name: 鏡框高度
+  dimension_temple_length:
+    type: column
+    name: 鏡腳長度
+  dimension_temple_max_length:
+    type: column
+    name: 鏡腳最大長度
+  dimension_bridge_width:
+    type: column
+    name: 鼻橋寬度
+  prescription_frame_max_width:
+    type: column
+    name: 處方眼鏡鏡框最大寬度
+  prescription_lens_max_width:
+    type: column
+    name: 處方眼鏡鏡片最大寬度
+  prescription_lens_max_height:
+    type: column
+    name: 處方眼鏡鏡片最大高度
+  dimension_product_weight:
+    type: column
+    name: 產品重量
+  country_of_origin:
+    type: column
+    name: 原產地
+  clip_on_frame:
+    type: column
+    name: 外掛式鏡框
+  clip_on_fit_round:
+    type: column
+    name: 外掛式鏡框適配_圓形
+  clip_on_fit_square:
+    type: column
+    name: 外掛式鏡框適配_方形
+  clip_on_fit_thickness:
+    type: column
+    name: 外掛式鏡框適配_厚度
+  feature_flexible_frame:
+    type: column
+    name: 彈性鏡框
+  feature_bendable_temple_tip:
+    type: column
+    name: 可彎鏡腳尾端
+  feature_adjustable_temple:
+    type: column
+    name: 可調整鏡腿
+  feature_anti_slip_temple:
+    type: column
+    name: 防滑鏡腳
+  accessory_strap_included:
+    type: column
+    name: 附帶綁帶
+  feature_wraparound:
+    type: column
+    name: 環繞式設計
+  feature_side_shield:
+    type: column
+    name: 側護片
+  warranty:
+    type: column
+    name: 保固
+  feature_anti_fog:
+    type: column
+    name: 防霧功能
+  feature_splash_resistant:
+    type: column
+    name: 防飛濺功能
+  feature_impact_resistant:
+    type: column
+    name: 耐衝擊
+  feature_anti_scratch:
+    type: column
+    name: 防刮功能
+  standard_ansi_z87_1:
+    type: column
+    name: ANSI.Z87.1標準
+  standard_osha_compliant:
+    type: column
+    name: 達OSHA標準
+  standard_mdel:
+    type: column
+    name: MDEL認證
+  feature_high_transmittance:
+    type: column
+    name: 高透射率
+  cleaning_method:
+    type: column
+    name: 清潔方式
+  protection_uv:
+    type: column
+    name: 紫外線防護
+  feature_reduce_glare:
+    type: column
+    name: 降低眩光
+  feature_true_color:
+    type: column
+    name: 真實色彩
+  feature_perfect_fit:
+    type: column
+    name: 完美貼合
+  feature_lightweight_design:
+    type: column
+    name: 輕巧設計
+  feature_long_duration_use:
+    type: column
+    name: 長時間使用
+  protection_eye_general:
+    type: column
+    name: 眼睛保護
+  user_eyewear_wearer:
+    type: column
+    name: 眼鏡族
+  user_worker:
+    type: column
+    name: 工人
+  scene_lab:
+    type: column
+    name: 實驗室
+  activity_chemistry:
+    type: column
+    name: 化學
+  activity_gardening:
+    type: column
+    name: 園藝
+  activity_shooting:
+    type: column
+    name: 射擊
+  activity_cycling:
+    type: column
+    name: 自行車
+  activity_woodworking:
+    type: column
+    name: 木工
+  activity_construction:
+    type: column
+    name: 建築
+  activity_entertainment:
+    type: column
+    name: 娛樂
+  scene_hospital:
+    type: column
+    name: 醫院
+  user_dentist:
+    type: column
+    name: 牙醫
+  scene_auto_repair:
+    type: column
+    name: 汽車維修廠
+  scene_factory:
+    type: column
+    name: 工廠
+  scene_painting_workshop:
+    type: column
+    name: 噴漆場景
+  scene_outdoor_alt:
+    type: column
+    name: 室外場景
+  scene_indoor:
+    type: column
+    name: 室內場景
+  protection_uv_grade_u6:
+    type: column
+    name: U6紫外線防護等級
+unused_source_columns:
+- etl_import_timestamp
+- etl_import_source
+- etl_product_line_id
+- etl_phase
+generated_at: '2026-04-29T09:06:48Z'
+generated_by: 'gen_product_attribute_bridges.R (qef-product-master-redesign 9.6, #460)'
+refingerprinted_at: '2026-05-05T19:00:00Z'
+refingerprint_session: 'qef-batch-bridges-ensemble-2026-05-05-part2 (7-bridge batch:
+  cas/psg/sfg/sfo/sgf/sgo/sss per #543 / #569 — class-level findings inherited from
+  bys/rpl/blb iter-1 ensemble at 13:00:00Z)'
+reviewed_by:
+  human_reviewer: kiki830621
+  review_mode: glue-ensemble-v1-batch-class-inherited
+  ai_reviewers:
+  - codex-cli@gpt-5.5-xhigh
+  - claude-opus-4-7-correctness
+  - claude-opus-4-7-devils-advocate
+  findings_summary:
+    critical: 0
+    high: 0
+    medium: 1
+    low: 3
+    suggestions: 1
+    resolved_in_iterations: 1
+  approved_at: '2026-05-05T19:00:00Z'
+  approved_in_commit: ''
+  review_artifacts: product_attributes_sfo.bridge.review.md
+  scoping_note: Batch ensemble class-inheritance (7-bridge batch part 2). Class-level
+    findings (M-1/L-1/L-2/S-1) established by bys/rpl/blb iter-1 ensemble at 2026-05-05T13:00:00Z;
+    per-PL spot-check verified mojibake L-3 for sfo. Mojibake in cols [商品名稱] (e.g.
+    'NoCry Safety Glasses... â Adjustable Temples...') — accepted per MP163 progressive
+    completeness, follow-up at next Gsheet audit. Security reviewer skipped per scoping
+    policy (config edit, no executable surface).
+findings_resolutions:
+- finding_id: M-1
+  severity: MEDIUM
+  description: Bridge yaml previously shipped with reviewed_by REQUIRES_HUMAN_REVIEW
+    placeholder
+  resolution: fixed inline this commit — placeholder replaced with structured form
+    per MP102 v1.3
+  accepted_by: kiki830621
+- finding_id: L-1
+  severity: LOW
+  description: BOM-prefix on first column header (per blb SUGGESTION-5 systemic)
+  resolution: accepted — runtime readr handles BOM transparently; cosmetic mismatch
+    with validator only
+  accepted_by: kiki830621
+- finding_id: L-2
+  severity: LOW
+  description: Wall-clock timestamps in generated_at/fingerprinted_at break idempotence
+    checks
+  resolution: accepted — matches blb iter-2 L-15 resolution; provenance value > idempotence
+    test value
+  accepted_by: kiki830621
+- finding_id: L-3
+  severity: LOW
+  description: UTF-8/CP1252 transcoding artifact in cols [商品名稱] (e.g. 'NoCry Safety
+    Glasses... â Adjustable Temples...') — same class as rpl L-1
+  resolution: accepted per MP163 progressive completeness — visible mojibake, will
+    be cleaned at next Gsheet audit; runtime ETL passes through faithfully
+  accepted_by: kiki830621

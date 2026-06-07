@@ -1,0 +1,62 @@
+# Company-specific Chinese Labels Override for QEF_DESIGN
+# Only product_attributes is overridden — other sections inherit from Global
+# (ecommerce_fields, customer_behavior, platform_specific, analysis_indicators, special_categories)
+
+metadata:
+  version: "v1.0"
+  created_date: "2026-02-02"
+  company: "QEF_DESIGN"
+  description: "Turbo parts product attribute labels for QEF Design"
+  note: "Only product_attributes is overridden. Other sections inherit from Global via deep merge (SO_P016)."
+
+# Override: QEF_DESIGN turbo parts product attributes
+product_attributes:
+  # Turbo specifications
+  turbine_wheel_material: "渦輪葉輪材質"
+  compressor_wheel_material: "壓縮葉輪材質"
+  bearing_type: "軸承類型"
+  bearing_material: "軸承材質"
+
+  # Size and fitment
+  inlet_size: "進氣口尺寸"
+  outlet_size: "出氣口尺寸"
+  turbine_housing_ar: "渦輪殼A/R值"
+  compressor_housing_ar: "壓縮殼A/R值"
+  shaft_diameter: "軸徑"
+
+  # Performance
+  max_rpm: "最大轉速"
+  boost_pressure_psi: "增壓壓力（PSI）"
+  max_exhaust_temp: "最大排氣溫度"
+  airflow_cfm: "空氣流量（CFM）"
+
+  # Cooling
+  oil_cooled: "油冷"
+  water_cooled: "水冷"
+  oil_inlet_size: "進油口尺寸"
+  oil_outlet_size: "回油口尺寸"
+  water_inlet_size: "進水口尺寸"
+  water_outlet_size: "回水口尺寸"
+
+  # Fitment
+  fitment_vehicle: "適用車型"
+  fitment_engine: "適用引擎"
+  oem_part_number: "原廠料號"
+  interchange_number: "互換料號"
+
+  # Product type
+  product_type: "產品類型"
+  product_line: "產品線"
+  condition: "狀態"
+  warranty_months: "保固月數"
+
+  # Valve specific (Pressure Relief Valve)
+  valve_type: "閥門類型"
+  operating_pressure: "工作壓力"
+  spring_rate: "彈簧磅數"
+
+  # Kit contents (Repair Kit, Water Hose Kit)
+  kit_contents: "套件內容"
+  gasket_material: "墊片材質"
+  hose_material: "管材質"
+  clamp_type: "夾具類型"

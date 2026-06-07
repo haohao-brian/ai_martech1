@@ -1,0 +1,382 @@
+prerawdata_source:
+  company: QEF_DESIGN
+  platform: amz
+  source_type: csv
+  source_uri: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_cas.csv
+  sheet_name: ~
+  schema_fingerprint:
+    algorithm: sha256
+    value: c84d838d3014706cb2a6c5a67141253acaffa75e3dfd0ccf9d16d6093e600bfd
+    fingerprinted_against: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_cas.csv
+      — single file (38 rows); regenerated 2026-05-12 with normalized helper per fix-glue-layer-infra-blockers
+      (#628)
+    fingerprinted_at: '2026-05-12T01:47:45Z'
+canonical_target:
+  datatype: product_attributes_cas
+  platform: amz
+  table: df_amz_product_attributes_cas___raw
+  schema_yaml_path: 01_db/raw_schema/_authoring/companies/QEF_DESIGN/product_attribute_schemas.yaml
+  platform_extension_yaml_path: 01_db/raw_schema/_authoring/platform_extensions/amz_extensions.yaml
+field_extractors:
+  brand:
+    type: column
+    name: 品牌
+  sales_platform:
+    type: column
+    name: 銷售平台
+  sku:
+    type: column
+    name: SKU
+    value_map:
+      NA: ~
+  asin:
+    type: column
+    name: ASIN
+  product_name:
+    type: column
+    name: 商品名稱
+  rank:
+    type: column
+    name: 排名
+  is_competitor:
+    type: column
+    name: 競爭對手
+  color_lens:
+    type: column
+    name: 鏡片顏色
+    value_map:
+      NA: ~
+  rating_no_distortion:
+    type: column
+    name: 無失真
+  rating_comfortable_wear:
+    type: column
+    name: 穿戴舒適
+  rating_durability:
+    type: column
+    name: 耐用性
+  rating_clear_vision:
+    type: column
+    name: 視野清晰
+  review_rating:
+    type: column
+    name: 評論星級
+  review_count:
+    type: column
+    name: 評論則數
+  url:
+    type: column
+    name: 網址
+    value_map:
+      NA: ~
+  is_benchmark_product:
+    type: column
+    name: 標竿產品
+  price:
+    type: column
+    name: 價格
+  quantity:
+    type: column
+    name: 數量
+  color_temple:
+    type: column
+    name: 鏡腳顏色
+    value_map:
+      NA: ~
+  material_frame:
+    type: column
+    name: 鏡框材質
+  material_lens:
+    type: column
+    name: 鏡片材質
+  material_nose_pad:
+    type: column
+    name: 鼻墊材質
+  dimension_frame_width:
+    type: column
+    name: 鏡框寬度
+    value_map:
+      NA: ~
+  dimension_frame_max_width:
+    type: column
+    name: 鏡框最大寬度
+    value_map:
+      NA: ~
+  dimension_lens_width:
+    type: column
+    name: 鏡片寬度
+    value_map:
+      NA: ~
+  dimension_frame_height:
+    type: column
+    name: 鏡框高度
+    value_map:
+      NA: ~
+  dimension_temple_length:
+    type: column
+    name: 鏡腳長度
+    value_map:
+      NA: ~
+  dimension_bridge_width:
+    type: column
+    name: 鼻橋寬度
+    value_map:
+      NA: ~
+  feature_cylindrical_lens:
+    type: column
+    name: 圓柱型鏡片
+  feature_adjustable_nose_pad:
+    type: column
+    name: 可調整鼻墊
+  accessory_strap_included:
+    type: column
+    name: 附帶綁帶
+  accessory_protective_case:
+    type: column
+    name: 保護盒
+  accessory_pouch:
+    type: column
+    name: 眼鏡袋
+  accessory_cleaning_cloth:
+    type: column
+    name: 清潔布
+  rx_insert_holder:
+    type: column
+    name: 近視鏡片架
+  warranty:
+    type: column
+    name: 保固
+  service_return:
+    type: column
+    name: 退貨服務
+  cleaning_method:
+    type: column
+    name: 清潔方式
+  feature_polarized:
+    type: column
+    name: 偏光功能
+  protection_uv:
+    type: column
+    name: 紫外線防護
+  feature_anti_reflection:
+    type: column
+    name: 防反射功能
+  feature_reduce_glare:
+    type: column
+    name: 降低眩光
+  feature_color_contrast:
+    type: column
+    name: 顏色對比
+  feature_true_color:
+    type: column
+    name: 真實色彩
+  feature_ergonomic_design:
+    type: column
+    name: 人體工學設計
+  feature_wraparound:
+    type: column
+    name: 環繞式設計
+  feature_perfect_fit:
+    type: column
+    name: 完美貼合
+  feature_lightweight_design:
+    type: column
+    name: 輕巧設計
+  protection_cataract_macular:
+    type: column
+    name: 預防白內障與黃斑部病變
+  protection_eye_strain:
+    type: column
+    name: 避免眼睛疲勞
+  protection_eye_general:
+    type: column
+    name: 眼睛保護
+  feature_flexible_frame:
+    type: column
+    name: 彈性鏡框
+  activity_gift:
+    type: column
+    name: 送禮
+  activity_paddle_tennis:
+    type: column
+    name: 板式網球
+  scene_sunny:
+    type: column
+    name: 晴天場景
+  scene_outdoor:
+    type: column
+    name: 戶外場景
+  activity_fishing:
+    type: column
+    name: 釣魚
+  activity_sea_fishing:
+    type: column
+    name: 海釣
+  activity_leisure_boat_fishing:
+    type: column
+    name: 休閒船釣
+  activity_golf:
+    type: column
+    name: 高爾夫運動
+  activity_hiking:
+    type: column
+    name: 健行
+  activity_running:
+    type: column
+    name: 跑步
+  activity_water_sports:
+    type: column
+    name: 水上運動
+  activity_beach:
+    type: column
+    name: 沙灘
+  activity_driving:
+    type: column
+    name: 駕駛
+  activity_cycling:
+    type: column
+    name: 自行車
+  activity_mountaineering:
+    type: column
+    name: 登山
+  activity_rowing:
+    type: column
+    name: 划船
+  activity_pickleball:
+    type: column
+    name: 匹克球
+  activity_cricket:
+    type: column
+    name: 板球
+  activity_tennis:
+    type: column
+    name: 網球
+  activity_softball:
+    type: column
+    name: 壘球
+  activity_triathlon:
+    type: column
+    name: 鐵人三項
+  activity_volleyball:
+    type: column
+    name: 排球
+  activity_baseball:
+    type: column
+    name: 棒球
+  scene_lakeside:
+    type: column
+    name: 湖畔
+  activity_mountain_biking:
+    type: column
+    name: 登山車
+  activity_bmx:
+    type: column
+    name: ＢMX
+  activity_motorcycle:
+    type: column
+    name: 機車
+  activity_skiing:
+    type: column
+    name: 滑雪
+  activity_travel:
+    type: column
+    name: 旅行
+  activity_hunting:
+    type: column
+    name: 狩獵
+  style_modern:
+    type: column
+    name: 現代風格
+  style_classic:
+    type: column
+    name: 經典風格
+  style_sport_casual:
+    type: column
+    name: 運動休閒風格
+  feature_photochromic_lens:
+    type: column
+    name: 變色鏡片.
+  standard_ansi_z87_1:
+    type: column
+    name: ANSI.Z87.1標準
+  feature_anti_fog:
+    type: column
+    name: 防霧功能
+  feature_water_repellent_coating:
+    type: column
+    name: 防水鍍層
+  feature_lens_stain_resistant:
+    type: column
+    name: 鏡片耐污
+  feature_oil_repellent:
+    type: column
+    name: 防油功能
+  feature_ventilation_design:
+    type: column
+    name: 通風設計
+  feature_interchangeable_lens:
+    type: column
+    name: 可互換鏡片
+  scene_photo_background_mountain:
+    type: column
+    name: 圖片背景_山
+    value_map:
+      NA: ~
+  scene_photo_background:
+    type: column
+    name: 圖片背景
+    value_map:
+      NA: ~
+unused_source_columns:
+- etl_import_timestamp
+- etl_import_source
+- etl_product_line_id
+- etl_phase
+generated_at: '2026-04-29T09:06:48Z'
+generated_by: 'gen_product_attribute_bridges.R (qef-product-master-redesign 9.6, #460)'
+refingerprinted_at: '2026-05-05T19:00:00Z'
+refingerprint_session: 'qef-batch-bridges-ensemble-2026-05-05-part2 (7-bridge batch:
+  cas/psg/sfg/sfo/sgf/sgo/sss per #543 / #569 — class-level findings inherited from
+  bys/rpl/blb iter-1 ensemble at 13:00:00Z)'
+reviewed_by:
+  human_reviewer: kiki830621
+  review_mode: glue-ensemble-v1-batch-class-inherited
+  ai_reviewers:
+  - codex-cli@gpt-5.5-xhigh
+  - claude-opus-4-7-correctness
+  - claude-opus-4-7-devils-advocate
+  findings_summary:
+    critical: 0
+    high: 0
+    medium: 1
+    low: 2
+    suggestions: 1
+    resolved_in_iterations: 1
+  approved_at: '2026-05-05T19:00:00Z'
+  approved_in_commit: ''
+  review_artifacts: product_attributes_cas.bridge.review.md
+  scoping_note: Batch ensemble class-inheritance (7-bridge batch part 2). Class-level
+    findings (M-1/L-1/L-2/S-1) established by bys/rpl/blb iter-1 ensemble at 2026-05-05T13:00:00Z;
+    per-PL spot-check verified clean encoding for cas. Security reviewer skipped per
+    scoping policy (config edit, no executable surface).
+findings_resolutions:
+- finding_id: M-1
+  severity: MEDIUM
+  description: Bridge yaml previously shipped with reviewed_by REQUIRES_HUMAN_REVIEW
+    placeholder
+  resolution: fixed inline this commit — placeholder replaced with structured form
+    per MP102 v1.3
+  accepted_by: kiki830621
+- finding_id: L-1
+  severity: LOW
+  description: BOM-prefix on first column header (per blb SUGGESTION-5 systemic)
+  resolution: accepted — runtime readr handles BOM transparently; cosmetic mismatch
+    with validator only
+  accepted_by: kiki830621
+- finding_id: L-2
+  severity: LOW
+  description: Wall-clock timestamps in generated_at/fingerprinted_at break idempotence
+    checks
+  resolution: accepted — matches blb iter-2 L-15 resolution; provenance value > idempotence
+    test value
+  accepted_by: kiki830621

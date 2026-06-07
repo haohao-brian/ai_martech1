@@ -1,0 +1,281 @@
+---
+id: "MP161"
+title: "Company-Scoped Schema Recognition"
+type: "meta-principle"
+category: "data_management"
+date_created: "2026-04-28"
+date_modified: "2026-04-28"
+author: "Claude (spectra change mp161-company-scoped-schemas, GitHub issue #499)"
+status: "active"
+version: "1.0"
+weight: 161
+related_to:
+  - "MP157": "Two-Layer YAML Authoring (MP161 refines Layer 1 by splitting into universal-Layer-1 vs company-scoped-Layer-1)"
+  - "MP158": "Glue-Driven Raw Layer Extensibility (MP161 strengthens axis-3 onboarding by clarifying which schemas need company-scoped extensions)"
+  - "MP159": "Glue Authoring Boundary Immutability (sibling — implicit-convention-to-explicit-rule pattern; MP159 says WHAT-stays-immutable, MP161 says WHERE-it-lives)"
+  - "MP160": "AI Schema/Bridge Authoring Completeness (sibling — implicit-to-explicit pattern; MP160 governs HOW completely, MP161 governs WHERE)"
+  - "MP102": "ETL Output Standardization (Tier-2 Schema Contract — both classifications are Category A bound files)"
+  - "MP029": "No Fake Information (sibling at meta-level — both prevent assuming incorrect classification)"
+  - "SO_P018": "Directory Governance (extends 29_company_examples concept to schema authoring + DDL)"
+binds:
+  - "shared/global_scripts/01_db/raw_schema/_authoring/core_schemas.yaml"
+  - "shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/*.yaml"
+  - "shared/global_scripts/01_db/raw_schema/_authoring/companies/*/*.yaml"
+  - "shared/global_scripts/01_db/raw_schema/_build.R"
+  - "shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/validate_bridge_yaml.R"
+  - "shared/global_scripts/00_principles/.claude/rules/01-always.md"
+  - "shared/global_scripts/00_principles/.claude/rules/02-coding.md"
+---
+
+# MP161: Company-Scoped Schema Recognition
+
+## Core Statement
+
+**Schema yamls and their generated DDL artifacts SHALL be classified as either UNIVERSAL (used by all consuming companies) or COMPANY-SCOPED (used by exactly one company's data). The classification SHALL be visible from the file's directory path:**
+
+- **Universal** → `_authoring/{core_schemas.yaml,platform_extensions/,_meta_schema.yaml,transformed_schemas.yaml}` and DDL output `_generated/{core,platforms}/`
+- **Company-scoped** → `_authoring/companies/{COMPANY}/...` and DDL output `_generated/companies/{COMPANY}/platforms/{platform}/...`
+
+The decision rule when classifying a new schema yaml: **"If a different company onboards tomorrow, would they reuse this exact shape?"**
+
+- YES → Universal
+- NO → Company-scoped
+
+## Why This Rule Exists
+
+GitHub issue #499 (2026-04-28): a user review of qef-product-master-redesign 9.5 acceptance outputs caught that `_generated/platforms/amz/` mixes 5 universal core datatype DDL files (sales/customers/orders/products/reviews) with 13 QEF-eyewear-specific DDL files (12 product_attributes_* + company_product_extension), with no architectural distinction visible from the file tree.
+
+The user's observation:
+
+> 「這邊不分公司行嗎？我覺得 bridge 絕對是要 company-specific」
+
+The `bridges/{COMPANY}/{platform}/` layer was already correctly company-scoped, but the DDL layer that bridges populate was not. **The implicit assumption "all Layer 1 schemas are universal" broke when 13 datatypes shipped in 9.2/9.3 turned out to be QEF-eyewear-specific.**
+
+This is the 5th implicit-to-explicit principle in Phase 9 (after MP159 #494 / MP160 #497 / DEV_R056 #498). The pattern:
+
+```
+implicit convention → AI mistake → user catches → elevation to normative principle
+```
+
+Each prior elevation paid for itself in 1-2 future failure-prevention rounds. Same cost asymmetry applies here: ~1 hour to author MP161, vs. recurring AI/human mistakes for similar future schema scoping decisions.
+
+**Technical evidence the gap was real**: the validator (`validate_bridge_yaml.R`) emits an INFO when checking `product_attributes_rpl.bridge.yaml`:
+
+> *"canonical field existence check skipped — datatype 'product_attributes_rpl' not found in core_schemas.yaml or platform_extensions/amz_extensions.yaml"*
+
+The validator was looking only at universal-scope files. The lack of company scope **in the data model** concealed the gap from automated checks. MP161 closes this gap structurally.
+
+## Architectural Definition
+
+### What Universal owns
+
+```
+shared/global_scripts/01_db/raw_schema/_authoring/
+  ├── core_schemas.yaml                  ← 6 universal datatypes
+  ├── _meta_schema.yaml                  ← validator vocabulary
+  ├── transformed_schemas.yaml           ← 2TR-layer schemas
+  ├── platform_extensions/
+  │   ├── amz_extensions.yaml
+  │   ├── cbz_extensions.yaml
+  │   ├── eby_extensions.yaml
+  │   ├── shp_extensions.yaml
+  │   └── official_website_extensions.yaml
+  └── r_definitions/                     ← legacy R-defined schemas
+```
+
+DDL emission for universal schemas:
+
+```
+shared/global_scripts/01_db/raw_schema/_generated/
+  ├── core/                              ← core-only DDL (no platform)
+  └── platforms/{amz,cbz,...}/           ← per-platform DDL
+```
+
+These files are bound by MP102 v1.2 (Schema Contract, MP156 Tier-2). Edits trigger IC_P002 cross-company verification across all 5 consuming companies.
+
+### What Company-Scoped owns
+
+```
+shared/global_scripts/01_db/raw_schema/_authoring/companies/
+  └── {COMPANY}/                         ← per-company namespace
+        ├── {schema}.yaml                ← company-specific schema yamls
+        ├── {translation_map}.yaml       ← company-specific translations
+        └── gen_*.R                      ← company-specific generators
+```
+
+DDL emission for company-scoped schemas:
+
+```
+shared/global_scripts/01_db/raw_schema/_generated/companies/
+  └── {COMPANY}/platforms/{platform}/
+        └── {datatype}.sql               ← per-(company × platform × datatype)
+```
+
+Currently only QEF_DESIGN has company-scoped schemas (12 per-PL attribute datatypes derived from eyewear product profile Gsheet exports). Other 4 companies (D_RACING, MAMBA, WISER, kitchenMAMA) currently have no company-scoped schemas — they use only universal schemas.
+
+## Decision Rule
+
+When authoring a new schema yaml, ask: **"If a different company onboards tomorrow, would they reuse this exact shape?"**
+
+| If the answer is | Classification | Path |
+|---|---|---|
+| YES — generic concepts every consuming company has | Universal | `_authoring/{core_schemas.yaml \| platform_extensions/}` |
+| NO — fields derive from one company's specific data | Company-scoped | `_authoring/companies/{COMPANY}/{schema}.yaml` |
+
+Concrete examples:
+
+| Schema | Classification | Reasoning |
+|---|---|---|
+| `sales` (order_id / customer_id / quantity / unit_price / amount / ...) | Universal | Every retail company has these concepts |
+| `products` (thin master: product_id / brand / category / ...) | Universal | All catalogs need product identity |
+| `reviews` (review_id / product_id / rating / review_text / ...) | Universal | All review datasets fit this shape |
+| `company_product_extension` (sku / marketplace / cost / fee_fba / net_profit / ...) | Universal | Every Amazon seller has these accounting cols (Chinese source col names live in QEF's bridge yaml only) |
+| `product_attributes_blb` (eyewear-domain cols: rating_clear_vision / dimension_lens_width / activity_blue_light_reading / ...) | Company-scoped | QEF eyewear-specific; D_RACING (racing accessories) wouldn't reuse |
+| `product_attributes_sgf` (sunglasses fishing) | Company-scoped | Same — QEF eyewear-specific |
+
+## Anti-Pattern Examples
+
+### Anti-pattern A — Putting company-scoped schema at universal path
+
+**Wrong**: author `product_attribute_schemas.yaml` (12 QEF eyewear datatypes) at `_authoring/product_attribute_schemas.yaml` because "Layer 1 schemas live at the top level". This conflates universal-Layer-1 with company-scoped-Layer-1.
+
+**Right**: place at `_authoring/companies/QEF_DESIGN/product_attribute_schemas.yaml`. Reason: the 12 datatypes' fields (rating_clear_vision, dimension_lens_width, etc.) derive from QEF's specific eyewear product line catalog. A second consuming company would not have these exact datatypes.
+
+### Anti-pattern B — Putting universal schema at company path
+
+**Wrong**: author `company_product_extension` (SKU/marketplace/cost/fee/profit) at `_authoring/companies/QEF_DESIGN/financial_schema.yaml` because "currently only QEF has financial data". This violates D2's decision rule — the schema fields ARE generic, only the source data is currently QEF-only.
+
+**Right**: keep `company_product_extension` in `_authoring/core_schemas.yaml` (universal). The Chinese source col names (商品成本-廠價, 頭程費, etc.) live in QEF's bridge yaml's `column_mapping`, not in the schema. Schema speaks English; bridges speak per-company source dialect. Future second-amz-seller onboarding inherits the same shape.
+
+### Anti-pattern C — DDL output path divergence from schema location
+
+**Wrong**: schema lives at `_authoring/companies/QEF_DESIGN/product_attribute_schemas.yaml`, but `_build.R` emits DDL to `_generated/platforms/amz/product_attributes_blb.sql` (universal location). The output path lies about the scope.
+
+**Right**: company-scoped schemas emit DDL to `_generated/companies/QEF_DESIGN/platforms/amz/product_attributes_blb.sql`. The path mirrors the source's scope.
+
+### Anti-pattern D — Implicit company-scope without `companies/` prefix
+
+**Wrong**: author `_authoring/QEF_DESIGN/...` directly at `_authoring/` top-level (no `companies/` prefix). This mixes scope-tagged with universal-tagged at the same level — the same readability problem MP161 was created to fix.
+
+**Right**: always use `_authoring/companies/{COMPANY}/...`. The `companies/` prefix groups company-scoped work cleanly.
+
+## Boundary Cases
+
+### Promotion: company-scoped → universal
+
+When does a schema graduate from company-scoped to universal?
+
+- A second consuming company adopts the same schema shape (or close enough that bridge-level translation suffices)
+- The schema's design has been stable across 2+ companies' use
+- IC_P002 cross-company verification confirms the schema is appropriate for all 5 consuming companies
+
+Process:
+
+1. File a spectra change documenting the promotion
+2. Run IC_P002 cross-company verification
+3. `git mv _authoring/companies/{ORIGINAL}/{schema}.yaml` → `_authoring/{schema}.yaml`
+4. Update `_build.R` to discover from new location
+5. Update bridge yamls' `schema_yaml_path:` references in all consuming companies' bridge directories
+6. Commit message includes `Verified:` trailer naming all 5 companies
+
+### Demotion: universal → company-scoped
+
+When does a schema get demoted from universal to company-scoped?
+
+- The schema turns out to only be used by one company despite living at universal location
+- Another company is unlikely to reuse the exact shape (different domain, different source data structure)
+
+Process:
+
+1. File a spectra change documenting the demotion
+2. Identify the actual consuming company
+3. `git mv _authoring/{schema}.yaml` → `_authoring/companies/{COMPANY}/{schema}.yaml`
+4. Update `_build.R` and bridge references
+5. IC_P002 cross-co verification confirms no other company actually depends on the schema
+
+Demotions are rarer than promotions but possible. The `company_product_extension` decision (D4 of this principle's design) is a near-miss demotion candidate that we kept universal — review and possibly demote if 6 months pass and no second amz-seller adopts it.
+
+## Files Bound
+
+| File | Status under MP161 |
+|---|---|
+| `shared/global_scripts/01_db/raw_schema/_authoring/core_schemas.yaml` | Universal Layer 1 — bound by MP102 + MP156 |
+| `shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/*.yaml` | Universal Layer 1 (per-platform) |
+| `shared/global_scripts/01_db/raw_schema/_authoring/companies/*/*.yaml` | Company-scoped Layer 1 |
+| `shared/global_scripts/01_db/raw_schema/_build.R` | DDL codegen — emits to scope-correct output paths |
+| `shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/validate_bridge_yaml.R` | Validator — schema-aware check looks in companies dir |
+| `shared/global_scripts/00_principles/.claude/rules/01-always.md` | Layer 3 quick-reference |
+| `shared/global_scripts/00_principles/.claude/rules/02-coding.md` | Layer 3 full coding-time section |
+
+## Change Discipline
+
+### Adding a new universal schema
+
+A change adding a universal schema (or universal datatype within `core_schemas.yaml`) SHALL:
+
+1. Pass the decision rule's "next-company-reuse test"
+2. IC_P002 cross-company verification (all 5 consuming companies SHALL be able to use the schema)
+3. DOC_R009 three-layer sync if it adds normative semantics
+4. `_build.R` emits DDL to `_generated/{core,platforms}/`
+
+### Adding a new company-scoped schema
+
+A change adding a company-scoped schema SHALL:
+
+1. Place files at `_authoring/companies/{COMPANY}/`
+2. Generators (if any) co-locate at the same directory
+3. `_build.R` emits DDL to `_generated/companies/{COMPANY}/platforms/{platform}/`
+4. IC_P002 verification scope is reduced — only the owning company's existing workflows need verification, but the change SHOULD still note the scope reduction explicitly in the commit message
+5. If the schema later promotes to universal, the promotion is a separate spectra change (per Boundary Cases above)
+
+### Modifying an existing classification
+
+Promotion (company-scoped → universal) or demotion (universal → company-scoped) requires its own spectra change with explicit scope-change documentation. Do NOT silently move files between scopes; that breaks downstream bridge yaml references and reviewer expectations.
+
+## Enforcement
+
+### Code-level (mechanical)
+
+`_build.R` discovers schemas at three locations and emits DDL accordingly:
+
+- `_authoring/core_schemas.yaml` → `_generated/core/{datatype}.sql` + `_generated/platforms/{platform}/{datatype}.sql`
+- `_authoring/platform_extensions/{platform}_extensions.yaml` → augments per-platform output
+- `_authoring/companies/{COMPANY}/*.yaml` → `_generated/companies/{COMPANY}/platforms/{platform}/{datatype}.sql`
+
+A misplaced schema (e.g., company-scoped content at top-level) emits DDL to the wrong path. The "byte-identical re-run" reproducibility check catches inconsistency over time.
+
+### Validator-level (mechanical)
+
+`validate_bridge_yaml.R`'s schema-aware check resolves the bridge's `prerawdata_source.company` and looks under `_authoring/companies/{COMPANY}/*.yaml` for the canonical-target datatype, in addition to `core_schemas.yaml` and `platform_extensions/{platform}_extensions.yaml`. A bridge referencing a datatype that doesn't exist in EITHER location = CRITICAL.
+
+### Process-level (review discipline)
+
+Pull requests / spectra changes adding new schemas SHALL state the classification (universal vs company-scoped) explicitly in the commit message. The decision rule provides a concrete test the reviewer can apply.
+
+## Exemptions
+
+The following are NOT MP161 violations:
+
+- **`company_product_extension` staying universal in `core_schemas.yaml`** even though only QEF currently uses it. Per D4 of this principle's design: schema fields are generic accounting concepts; Chinese source col names live in QEF's bridge yaml only. Other amz-seller companies onboarding inherit the same shape. Reversibility: if 6 months pass and no second amz-seller adopts it, demotion via spectra change is bounded-cost.
+- **Existing `bridges/{COMPANY}/{platform}/` layout** without `companies/` prefix. The bridges layer is already correctly company-scoped at a different directory; migrating to `companies/{COMPANY}/bridges/{platform}/` is churn for no architectural gain. Out of MP161's enforcement scope.
+- **`r_definitions/` directory** (legacy R-defined schemas pre-yaml authoring). Currently universal-scoped; MP161 doesn't retroactively classify legacy code. Future R-definition additions SHALL follow MP161 if/when the codebase migrates fully to yaml authoring.
+- **Generated artifacts at `99_archived/`**. Archived content is exempt from current normative rules per MP030 (Archive Immutability).
+
+## Cross-References
+
+| Principle | Relationship |
+|---|---|
+| MP157 | MP161 refines MP157's Layer 1 by splitting into universal-Layer-1 vs company-scoped-Layer-1. MP157 establishes the layer concept; MP161 establishes the scope-based subdivision within Layer 1. |
+| MP158 | MP161 strengthens MP158's axis-3 (new company onboarding) bounded-cost guarantee by classifying schemas. Universal schemas mean axis-3 onboarding only adds Layer 2 bridge; company-scoped schemas mean axis-3 also adds a Layer 1 entry under `_authoring/companies/{NEW_COMPANY}/`. |
+| MP159 | Sibling principle in the implicit-convention-to-explicit-rule pattern. MP159 elevated Layer 1 immutability from convention to rule; MP161 elevates company-scope classification from convention to rule. Together they specify both WHAT-stays-immutable (MP159) and WHERE-it-lives (MP161). |
+| MP160 | Sibling principle on the scope axis. MP160 governs HOW completely AI authors schemas (full enumeration); MP161 governs WHERE schemas live (universal vs company-scoped). Both elevations from implicit-to-explicit triggered during qef-product-master-redesign Phase 9 review. |
+| MP102 | Both classifications are MP102 Tier-2 Schema Contract bound files. Edits to either trigger IC_P002 cross-company verification (universal: all 5 companies; company-scoped: only the owning company). **MP102 v1.3 (#500) sister extension**: MP161 classifies schemas by scope (universal vs company-scoped); MP102 v1.3 classifies bridge reviews by accountability anchor (structured `reviewed_by` with human_reviewer + ai_reviewers + audit trail). Both are classification disciplines that turn implicit-convention into explicit-rule. |
+| SO_P018 | Companion principle. SO_P018 governs which directories may exist; MP161 governs which scope (universal vs company-scoped) each schema yaml belongs to. SO_P018 already recognizes 29_company_examples/{company}/ for company-specific R code; MP161 extends concept to schema authoring + generated DDL. |
+| MP029 | Sibling at meta-level — both prevent assuming incorrect classification. MP029 forbids fabricating data; MP161 forbids mis-classifying schema scope. |
+
+## References
+
+- spectra change `mp161-company-scoped-schemas` (2026-04-28)
+- GitHub issue #499 (rule proposal source)
+- Trigger: user review of qef-product-master-redesign 9.5 acceptance outputs caught the universal/QEF-specific mix at `_generated/platforms/amz/`. Original quote (2026-04-28): "這邊不分公司行嗎？我覺得 bridge 絕對是要 company-specific"
+- This is the 5th implicit-to-explicit principle in Phase 9 (after MP155-MP160 + DEV_R056). Each prior elevation validated its own enforcement in subsequent work.

@@ -3,8 +3,22 @@
 .Rproj.user/
 ai_martech/
 l1_basic/
-l4_enterprise/
 l9_projects/
+
+# l4_enterprise: exclude bulky archived/data dirs
+l4_enterprise/kitchenMAMA/archived/
+l4_enterprise/kitchenMAMA/data/
+l4_enterprise/MAMBA/archived/
+l4_enterprise/MAMBA/data/
+l4_enterprise/MAMBA/_targets/
+l4_enterprise/MAMBA/cache/
+l4_enterprise/MAMBA/logs/
+l4_enterprise/**/archived/
+l4_enterprise/**/data/local_data/
+
+# Nested .git dirs (avoid embedded repos)
+l4_enterprise/**/.git
+l4_enterprise/**/.git/
 
 # Large data files (GitHub 100MB limit + privacy)
 archive/l3_enterprise/MAMBA/data/local_data/rawdata_MAMBA/product_feedbacks.csv
@@ -12,9 +26,15 @@ archive/l3_enterprise/MAMBA/data/local_data/rawdata_MAMBA/product_feedbacks.csv
 *.parquet
 *.rds
 *.RData
+*.duckdb
+*.sqlite
 
-# Secrets
+# Secrets (CRITICAL — never commit)
 .env
 .env.*
+!.env.example
+!.env.template
 *.pem
 *.key
+*_rsa
+*_rsa.pub

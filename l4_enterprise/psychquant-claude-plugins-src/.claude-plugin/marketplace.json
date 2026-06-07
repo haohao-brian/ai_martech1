@@ -1,0 +1,372 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "psychquant-claude-plugins",
+  "description": "Che Cheng's Claude Code Plugin Marketplace - 學術研究與生產力工具",
+  "owner": {
+    "name": "Che Cheng",
+    "email": "che@example.com"
+  },
+  "homepage": "https://github.com/PsychQuant/psychquant-claude-plugins",
+  "plugins": [
+    {
+      "name": "mcp-tools",
+      "version": "1.14.0",
+      "description": "MCP Server 開發工具集：mcp-new-app、mcp-deploy、mcp-install、mcp-upgrade、mcp-clone、mcp-publish、mcp-sync、mcp-diagnose、mcp-debug、mcp-test、mcp-to-plugin、mcp-issue",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/mcp-tools",
+      "category": "development"
+    },
+    {
+      "name": "plugin-tools",
+      "version": "1.12.0",
+      "description": "Claude Code Plugin 完整生命週期工具：plugin-create、plugin-upgrade、plugin-deploy、plugin-update、plugin-health、plugin-debug",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/plugin-tools",
+      "category": "development"
+    },
+    {
+      "name": "issue-driven-dev",
+      "version": "2.20.0",
+      "description": "Issue-driven development methodology: idd-issue → idd-diagnose → idd-implement → idd-verify → idd-close with enforced checklist gate. v2.18.0: every stage skill now opens with a mandatory Step 0 Bootstrap Stage Task List (TaskCreate for each sub-step) so silent skipping is impossible. idd-implement bootstraps TaskList from Strategy bullets; idd-close refuses to close any issue with unchecked - [ ]. Skip/won't-fix marks (- [~] / - [-]) require reasons. Commit convention: use (#NNN) or Refs #NNN, NEVER Closes/Fixes/Resolves trailers (they bypass idd-close gate). Plus idd-list, idd-comment, idd-edit, idd-update, idd-report.",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/issue-driven-dev",
+      "category": "development"
+    },
+    {
+      "name": "che-apple-mail-mcp",
+      "version": "2.5.0",
+      "description": "Apple Mail MCP server — 44 tools, SQLite 毫秒搜尋, .emlx 解析, 批次操作. v2.5.0: 四個 composing 工具 (compose/draft/reply/forward) 新增 format 參數支援 markdown/HTML body (Closes #14 #15 via upstream v2.3.0 binary). 疊加 v2.4.0 archive-mail 搜尋擴展 + Coverage Audit.",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-apple-mail-mcp",
+      "category": "productivity"
+    },
+    {
+      "name": "che-apple-notes-mcp",
+      "version": "0.1.0",
+      "description": "Apple Notes MCP server — 18 tools. SQLite 快讀（<10ms）+ AppleScript 寫入（CloudKit-safe），FDA fallback。Folders/notes CRUD、search、batch、undo/redo，雙軌 body（plaintext 或 HTML）。",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-apple-notes-mcp",
+      "category": "productivity"
+    },
+    {
+      "name": "r-shiny-debugger",
+      "version": "1.0.0",
+      "description": "功能測試導向的 R Shiny App Debug 工具，整合 agent-browser 與 R console",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/r-shiny-debugger",
+      "category": "development"
+    },
+    {
+      "name": "che-archive-lines",
+      "version": "1.0.0",
+      "description": "歸檔 LINE macOS 聊天記錄到文字檔，使用座標點擊自動化",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-archive-lines",
+      "category": "productivity"
+    },
+    {
+      "name": "ai-docs-guide",
+      "version": "1.4.0",
+      "description": "Auto-triggered Skills for querying Claude Code, OpenAI, Codex CLI, Gemini API, and Gemini CLI documentation. Source-code-first for CLI tools. /ai-docs-guide for cross-platform comparison.",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/ai-docs-guide",
+      "category": "productivity"
+    },
+    {
+      "name": "claude-config-guide",
+      "version": "1.0.0",
+      "description": "[Deprecated — replaced by ai-docs-guide] Claude Code 設定查詢助手",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/claude-config-guide",
+      "category": "productivity"
+    },
+    {
+      "name": "che-things-mcp",
+      "version": "1.6.1",
+      "description": "Things 3 任務管理 MCP Server - 47 個工具支援完整 GTD 工作流程",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-things-mcp",
+      "category": "productivity"
+    },
+    {
+      "name": "che-ical-mcp",
+      "version": "1.7.1",
+      "description": "macOS 行事曆與提醒事項 MCP Server - EventKit 整合，28 個工具，支援 attendees/organizer、undo/redo、每事件時區、--cli 模式、--setup TCC 授權、彈性日期解析、模糊匹配、batch 操作",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-ical-mcp",
+      "category": "productivity"
+    },
+    {
+      "name": "che-duckdb-mcp",
+      "version": "2.2.0",
+      "description": "Swift-native DuckDB MCP + guidance Skill — dual-source docs (llms.txt + full) with TF-IDF search + fuzzy function matching, plus 6 local DB tools (14 total). Pinned duckdb-swift, real DuckDB error messages, SessionStart hook for version check.",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-duckdb-mcp",
+      "category": "development"
+    },
+    {
+      "name": "che-word-mcp",
+      "version": "1.17.0",
+      "description": "Word MCP Server - Swift 原生 OOXML 操作，148 個工具，支援 Dual-Mode + Session 狀態管理（dirty tracking, autosave, finalize）",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-word-mcp",
+      "category": "productivity"
+    },
+    {
+      "name": "postgresql-guide",
+      "version": "1.0.0",
+      "description": "Auto-triggered Skill for querying PostgreSQL official documentation",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/postgresql-guide",
+      "category": "development"
+    },
+    {
+      "name": "claude-switch",
+      "version": "1.0.0",
+      "description": "Claude Code 多帳號管理：切換帳號、列出帳號、自動設定 IDE symlink 解決 VS Code 偵測問題",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/claude-switch",
+      "category": "productivity"
+    },
+    {
+      "name": "che-xcode-mcp",
+      "version": "1.0.0",
+      "description": "App Store Connect MCP Server — 99 tools across 15 domain managers covering the full ASC API",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-xcode-mcp",
+      "category": "development"
+    },
+    {
+      "name": "che-dropbox-ignore",
+      "version": "2.1.0",
+      "description": "Dropbox 同步排除管理 — 自動對 .git、build artifacts 等設定 com.dropbox.ignored xattr",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-dropbox-ignore",
+      "category": "productivity"
+    },
+    {
+      "name": "che-bot-toolkit",
+      "version": "0.1.0",
+      "description": "Bot 開發工具集",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-bot-toolkit",
+      "category": "development"
+    },
+    {
+      "name": "archive-first",
+      "version": "2.1.0",
+      "description": "Protect files from AI-assisted deletion — PreToolUse hooks block destructive commands on archived/ paths, toggle with archived-lock/archived-unlock",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/archive-first",
+      "category": "productivity"
+    },
+    {
+      "name": "codex-batch",
+      "version": "1.0.0",
+      "description": "Batch content generation using Codex CLI (GPT-5.4) — parallel codex exec with large reference docs as context",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/codex-batch",
+      "category": "productivity"
+    },
+    {
+      "name": "che-svg-mcp",
+      "version": "0.1.0",
+      "description": "SVG MCP Server — Swift 原生 XML 操作，33 個工具，Session-based 向量圖形編輯",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-svg-mcp",
+      "category": "creative"
+    },
+    {
+      "name": "che-pixel-mcp",
+      "version": "0.1.0",
+      "description": "Pixel MCP Server — Swift 原生 Core Image 操作，36 個工具，200+ 濾鏡，Session-based 點陣圖形編輯",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-pixel-mcp",
+      "category": "creative"
+    },
+    {
+      "name": "che-telegram-mcp",
+      "version": "1.1.0",
+      "description": "Telegram MCP Plugin — 結合 Bot API 與個人帳號 (TDLib)，macOS Keychain 密鑰管理",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-telegram-mcp",
+      "category": "productivity"
+    },
+    {
+      "name": "perspective-writer",
+      "version": "2.3.0",
+      "description": "Write letters, emails, autobiographies, and formal documents by simulating the writer's authentic voice",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/perspective-writer",
+      "category": "productivity"
+    },
+    {
+      "name": "che-creative-suite",
+      "version": "0.1.0",
+      "description": "Creative Suite — 協調 che-svg-mcp（向量）與 che-pixel-mcp（點陣）的圖形處理工作流，含 creative-router skill 與 creative-agent",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-creative-suite",
+      "category": "creative"
+    },
+    {
+      "name": "che-zotero-mcp",
+      "version": "1.0.1",
+      "description": "Zotero reference manager + academic search + knowledge graph MCP Server",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-zotero-mcp",
+      "category": "productivity"
+    },
+    {
+      "name": "r-docs-guide",
+      "version": "1.0.0",
+      "description": "Auto-triggered Skills for querying R package documentation via WebFetch. Covers CRAN, tidyverse, Shiny, and general R packages.",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/r-docs-guide",
+      "category": "development"
+    },
+    {
+      "name": "che-apple-dev",
+      "version": "1.1.0",
+      "description": "Apple platform development toolkit — build, deploy, debug, device management, Apple OAuth setup for Xcode projects",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-apple-dev",
+      "category": "development"
+    },
+    {
+      "name": "tool-finder",
+      "version": "1.0.0",
+      "description": "找出任務可用的工具（MCP、Skills、CLI）或搜尋更好的替代方案",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/tool-finder",
+      "category": "productivity"
+    },
+    {
+      "name": "safari-browser",
+      "version": "2.6.0",
+      "description": "macOS native browser automation via Safari + AppleScript — permanent login, upload --native, site-specific playbook skills",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/safari-browser",
+      "category": "productivity"
+    },
+    {
+      "name": "che-axiom-systems",
+      "version": "1.0.0",
+      "description": "Axiomatization Systems — 跨領域形式化公理體系的建立、驗證與查詢。基於 ASBE 方法論。axiom-create、axiom-validate、axiom-lookup",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/che-axiom-systems",
+      "category": "productivity"
+    },
+    {
+      "name": "lean-prover",
+      "version": "1.1.0",
+      "description": "Lean 4 automated proof grinding — breadth-first sorry elimination with Mathlib API rules, codex-prove-assist, lean-prover agent, and auto-commit",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/lean-prover",
+      "category": "development"
+    },
+    {
+      "name": "gifthub",
+      "version": "1.1.0",
+      "description": "GiftHub CLI integration — auto-detect .gfh.json, inject usage context, auto-install after build",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/gifthub",
+      "category": "development"
+    },
+    {
+      "name": "cli-tools",
+      "version": "1.0.0",
+      "description": "CLI tool lifecycle management — build, deploy, install, upgrade Swift CLI tools via GitHub Releases",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/cli-tools",
+      "category": "development"
+    },
+    {
+      "name": "parallel-ai-agents",
+      "version": "2.1.0",
+      "description": "Ensemble 審閱：4 Claude + Codex 交叉比對，支援 independent/hybrid/mix N 三種模式",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/parallel-ai-agents",
+      "category": "development"
+    },
+    {
+      "name": "macdoc",
+      "version": "1.1.0",
+      "description": "macOS 原生文件處理 CLI — 格式轉換、VLM OCR（含 host profile 設定）、SRT 處理",
+      "author": {
+        "name": "Che Cheng"
+      },
+      "source": "./plugins/macdoc",
+      "category": "productivity"
+    }
+  ]
+}

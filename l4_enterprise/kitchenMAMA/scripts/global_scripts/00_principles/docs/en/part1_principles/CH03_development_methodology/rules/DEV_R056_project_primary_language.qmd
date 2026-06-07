@@ -1,0 +1,232 @@
+---
+title: "DEV_R056: Project Primary Language — R First"
+subtitle: "Project primary language is R; Python only in 09_python_scripts/; advisory strength with soft hook"
+chapter: "CH03"
+category: "rule"
+number: "DEV_R056"
+date-created: "2026-04-28"
+date-modified: "2026-04-28"
+author: "Claude (spectra change dev-r056-r-first-language, GitHub issue #498)"
+type: "rule"
+law: "Development Methodology"
+article-number: "Rule 56"
+parent_principle: "MP029"
+related_to:
+  - "MP029": "No Fake Information (sibling — DEV_R056 prevents 'AI training preference assumed equal to project convention')"
+  - "MP102": "ETL Output Standardization (R-based codegen tooling assumed by MP102 is made explicit at language level)"
+  - "DM_R028": "ETL Data Type Separation (file naming `{platform}_ETL_{datatype}_{phase}.R` already implies R extension; DEV_R056 makes it explicit)"
+  - "DEV_R052": "Canonical English Keys (sister decision-discipline rule — both advisory)"
+  - "DEV_R055": "Semantic Consistency Fallback (sister decision-discipline rule — both advisory)"
+  - "MP159": "Glue Authoring Boundary Immutability (sibling — implicit-convention-to-explicit-rule pattern)"
+  - "MP160": "AI Schema/Bridge Authoring Completeness (sibling — AI-failure-mode-to-explicit-rule pattern)"
+  - "SO_R038": "Schema Authoring YAML Naming (R authoring uses these naming rules; DEV_R056 governs the language they apply to)"
+binds:
+  - "shared/global_scripts/00_principles/docs/en/part1_principles/CH03_development_methodology/rules/DEV_R056_project_primary_language.qmd"
+  - "shared/global_scripts/00_principles/llm/CH03_development.yaml"
+  - "shared/global_scripts/00_principles/.claude/rules/01-always.md"
+  - "shared/global_scripts/00_principles/.claude/rules/02-coding.md"
+  - "shared/global_scripts/00_principles/.claude/hooks/check-language-discipline.sh"
+  - "shared/global_scripts/00_principles/.claude/settings.json"
+  - "shared/global_scripts/09_python_scripts/"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+---
+
+# DEV_R056: Project Primary Language — R First {#overview}
+
+## Core Statement
+
+**Project primary language SHALL be R for all new code authoring in `shared/global_scripts/`. Python files SHALL only live in `shared/global_scripts/09_python_scripts/`. This is an `advisory / convention` rule — soft enforcement via a PreToolUse hook that warns but does not block.**
+
+R is the project's overwhelming majority language (95%+ of code files). Every new AI session re-onboards from training-default preferences (where Python is dominant for data tooling), and without an explicit normative rule, AI agents repeatedly propose Python at decision time. DEV_R056 prevents this drift by codifying the convention.
+
+## Why This Rule Exists
+
+This rule was triggered by GitHub issue #498 (2026-04-28): an AI agent — me — proposed `gen_product_attribute_schemas.py` for qef-product-master-redesign task 9.2 without checking project conventions. The user pointed out that no rule prevents this, and elevated the implicit convention to a normative principle. This is the same `implicit convention → explicit rule` pattern that produced MP159 (#494) and MP160 (#497).
+
+The cost asymmetry justifies the rule: authoring DEV_R056 takes ~1 hour. Each future AI session re-proposing Python costs 10-15 minutes of corrective dialogue plus a commit. The rule pays for itself in 1-2 future sessions.
+
+## R Territory (REQUIRED Scope)
+
+The following work SHALL be authored in R:
+
+| Domain | Path | File pattern |
+|---|---|---|
+| ETL scripts | `update_scripts/ETL/{platform}/` | `{platform}_ETL_{datatype}_{phase}.R` |
+| DRV scripts | `update_scripts/DRV/{platform}/` + `16_derivations/` | `all_D{NN}_{NN}.R` + `fn_D{NN}_{NN}_core.R` |
+| Shiny components | `10_rshinyapp_components/` | `*UI.R` / `*Server.R` / `*Defaults.R` |
+| Schema codegen | `01_db/raw_schema/_build.R` and any related codegen tools | `*.R` |
+| Schema validation | `00_principles/.claude/skills/glue-bridge/scripts/` | `validate_*.R` |
+| Schema authoring tools | One-off generators that read sources and emit yaml | `gen_*.R` |
+| Test scripts | `98_test/` | `test_*.R` |
+| Deployment helpers | `23_deployment/03_deploy/` | `*.R` (e.g. `upload_app_data_to_supabase.R`; canonical orchestration is `MAMBA/Makefile`) |
+| General utilities | `04_utils/` + `05_etl_utils/` | `fn_*.R` |
+| Shiny utilities | `11_rshinyapp_utils/` | `fn_*.R` |
+| Models | `07_models/` | `*.R` |
+| Initialization | `22_initializations/` | `sc_*.R` |
+
+Concrete consequence: any new tool that reads CSV/yaml/parquet, applies transformations, and emits another file SHALL be R. CSV reading uses `readr::read_csv`; yaml emission uses `yaml::write_yaml`; data manipulation uses `dplyr`/`tidyr`/`data.table`; Excel reading uses `readxl`. All have R-native solutions.
+
+## Python Exempt Territory (ONLY allowed location)
+
+Python files SHALL only live in `shared/global_scripts/09_python_scripts/`. This is a strict boundary — no Python is permitted anywhere else in the project tree.
+
+The current Python territory contains exactly four files:
+
+| File | Purpose | Why Python |
+|---|---|---|
+| `comment_rating.py` | Review sentiment scoring (legacy) | NLP / OpenAI workload from before R had mature OpenAI bindings |
+| `comment_rating_per.py` | Review scoring per property (legacy) | Same as above |
+| `comment_rating_per_v2.py` | Current production review scoring | Same as above |
+| `gender_prediction.py` | Customer gender prediction | NLP-heavy, uses Python ML libraries |
+
+New Python work in this chapter is permitted when extending these workloads (e.g., new prompt variants, new model adapters). For boundary expansion to other directories, see "Boundary Expansion Governance" below.
+
+## Bash Exempt Scope
+
+Bash files are permitted only for:
+
+- Deployment wrappers (`bash/` directory + similar) that invoke `Rscript` for actual logic
+- OS-level operations (file moves, directory setup, git operations)
+- Test runner harnesses
+
+Bash SHALL NOT contain business logic. Data transformation, statistical computation, or domain logic in a deployment workflow SHALL be invoked via `Rscript` calls from the wrapper.
+
+## JavaScript / TypeScript Exempt Scope
+
+JavaScript / TypeScript files are permitted only as:
+
+- Shiny custom JS in `19_CSS/` or `24_assets/`
+- Browser-side helpers integrated with Shiny UI (e.g., custom widgets, animations)
+
+JS / TS SHALL NOT be used as standalone tooling. A CLI utility for data processing, a build script, or any tool that runs outside Shiny context SHALL be authored in R.
+
+## Anti-Pattern Catalog (Three Rationalizations to Refute)
+
+When an AI agent considers authoring code in a non-R language, the agent SHALL recognize and refute the following three rationalizations.
+
+### Anti-pattern 1 — "Python is faster to write"
+
+**Wrong reasoning**: "This script is shorter in Python — Pandas one-liners are concise."
+
+**Refutation**: Project convention overrides per-script optimality. R is the project language; future maintainers (human and AI) expect R. The 10 lines of Pandas vs. 15 lines of dplyr difference is rounding error compared to the maintenance cost of a polyglot codebase. Furthermore, dplyr is not measurably more verbose than Pandas for the operations this project performs — and tidyverse readability arguably exceeds Pandas for non-trivial pipelines.
+
+### Anti-pattern 2 — "I'm more familiar with Python"
+
+**Wrong reasoning**: "My training data has more Python data-tooling examples."
+
+**Refutation**: AI familiarity is not a valid override of project convention. The `r-docs-guide` skill is available for unfamiliar R tasks — invoke it before defaulting to Python. The project has 65+ DEV_R rules covering R idioms, plus extensive existing R code to pattern-match against. AI's job is to learn the project's language, not impose its training preferences.
+
+### Anti-pattern 3 — "Python has the library"
+
+**Wrong reasoning**: "Python has Pandas / NumPy / scikit-learn / spaCy / [specific library]."
+
+**Refutation**: First verify whether R has an equivalent. CRAN has 20,000+ packages; tidyverse covers most data manipulation; jsonlite/yaml/readxl handle most file formats; survival/lme4/mirt cover most statistical models; tm/text/quanteda cover most NLP. Document the equivalent R package or function before falling back to Python. Only consider Python if no R equivalent exists AND the use case fits within `09_python_scripts/` scope (NLP/AI workloads).
+
+## Soft Enforcement Hook
+
+A PreToolUse hook (`shared/global_scripts/00_principles/.claude/hooks/check-language-discipline.sh`) is registered on Write and Edit tools. The hook:
+
+- Examines the target file path
+- If path matches `*.py` AND path does NOT contain `/09_python_scripts/` → emits an advisory warning to stderr citing DEV_R056 by ID, listing corrective options
+- Exits 0 (warning is advisory, NOT blocking)
+
+The hook is reinforcement for the principle text, not a replacement for it. Primary defense remains the principle visible in `01-always.md` (planning time) and `02-coding.md` (coding time). The advisory level was chosen deliberately — see "Strength: Convention vs Mechanical Correctness" below.
+
+### Hook gap (R4 from design)
+
+The hook fires on Write and Edit tool calls. It does NOT fire when an AI agent uses Bash to write a `.py` file (e.g., `cat > foo.py`, `tee foo.py`, `python -c '...' > foo.py`). This is a known gap. The primary defense (principle text in 01-always.md / 02-coding.md) remains in effect for these cases. Future enhancement may add Bash matchers for `.py` redirection patterns; out of scope for v1.
+
+## Strength: Convention vs Mechanical Correctness
+
+DEV_R056 is an `advisory / convention` rule. The strength is intentionally lower than mechanical-correctness rules:
+
+| Principle | Strength | Enforcement |
+|---|---|---|
+| MP159 / MP160 | Mechanical | Validator CRITICAL rejects (program is wrong if violated) |
+| DEV_R052 (English keys) | Advisory | No auto-checker (program may still work in non-English) |
+| **DEV_R056 (this rule)** | **Advisory + soft hook** | **Hook warns; does not block** |
+| MP100 (UTF-8 encoding) | Mixed | Hook + lint |
+
+Why advisory and not mechanical:
+
+1. A Python script can produce correct output. Wrong language is stylistic / convention violation, not correctness violation.
+2. Existing legitimate Python in `09_python_scripts/` proves grey-zone cases exist; mechanical rejection would block these.
+3. Mechanical rejection prevents the boundary-expansion governance path from being usable (you'd never get to file the spectra change because the block stops you first).
+4. Pure advisory without a hook loses the AI-mistake-catching power that triggered #498.
+
+The chosen middle ground — advisory + soft hook — gives AI a write-time signal without blocking legitimate Python use.
+
+## Boundary Expansion Governance
+
+If a future use case genuinely requires Python outside `09_python_scripts/`, the path is:
+
+1. File a spectra change documenting the use case (similar to how this principle was filed via #498)
+2. The change SHALL invoke IC_P002 cross-company verification — verify the Python addition does not break any of the 5 consuming companies (QEF_DESIGN, D_RACING, MAMBA, WISER, kitchenMAMA)
+3. The change SHALL update DEV_R056's "Python exempt territory" enumeration to add the new location
+4. The commit message SHALL include `Verified:` trailer naming the 5 companies
+5. Once shipped, the new location is permanent exempt territory until another spectra change removes it
+
+This friction is intentional. A new Python territory is a multi-year commitment that affects all consuming companies; the cost of governance matches the cost of the decision.
+
+## Files Bound
+
+| File | Status under DEV_R056 |
+|---|---|
+| `shared/global_scripts/00_principles/docs/en/part1_principles/CH03_development_methodology/rules/DEV_R056_project_primary_language.qmd` | Layer 1 (this file) |
+| `shared/global_scripts/00_principles/llm/CH03_development.yaml` | Layer 2 — DEV_R056 entry SHALL exist with same statement |
+| `shared/global_scripts/00_principles/.claude/rules/01-always.md` | Layer 3 — quick-reference one-liner |
+| `shared/global_scripts/00_principles/.claude/rules/02-coding.md` | Layer 3 — full "程式語言選擇" section |
+| `shared/global_scripts/00_principles/.claude/hooks/check-language-discipline.sh` | Soft enforcement hook |
+| `shared/global_scripts/00_principles/.claude/settings.json` | Hook registration |
+| `shared/global_scripts/09_python_scripts/` | Python exempt territory (only allowed Python location) |
+
+## Change Discipline
+
+### Modifying DEV_R056 itself
+
+Changes to DEV_R056's statement, scope, or strength SHALL go through:
+
+1. A spectra change documenting the change rationale
+2. DOC_R009 three-layer sync (.qmd → llm/yaml → rules/md)
+3. Cross-company verification (IC_P002) — DEV_R056 affects all 5 consuming companies' authoring discipline
+
+### Adding to Python exempt territory
+
+See "Boundary Expansion Governance" above.
+
+### Removing from Python exempt territory
+
+If a Python file in `09_python_scripts/` is replaced by an R equivalent and removed, the spectra change documenting the replacement SHALL update DEV_R056's enumeration of existing files. Goal: keep DEV_R056's "current state" accurate.
+
+## Exemptions
+
+The following are NOT DEV_R056 violations:
+
+- **Existing Python files in `09_python_scripts/`**: the 4 files listed above stay as-is. DEV_R056 governs new code authoring; existing files are grandfathered until replaced.
+- **Quoted Python code in R scripts**: an R script that contains a string literal of Python code (e.g., for documentation, error messages, or `reticulate::py_run_string`) is permitted. The R file is still R-canonical.
+- **Generated Python**: a Python file emitted by an R generator (e.g., `Rscript gen_python_demo.R` produces a `demo.py`) is permitted IF the demo.py lives in `09_python_scripts/` or is a transient deployment artifact (not committed to the repo).
+- **External tooling configs**: `pyproject.toml`, `requirements.txt`, etc. inside `09_python_scripts/` are permitted (they describe the Python environment for the exempt territory).
+- **Bash deployment wrappers invoking Python**: a `.sh` script that calls `python script.py` is permitted IF the called script is inside `09_python_scripts/`.
+
+## Cross-References
+
+| Principle | Relationship |
+|---|---|
+| MP029 | Sibling — DEV_R056 prevents the "AI training preference assumed equal to project convention" failure mode (a second-order MP029 violation) |
+| MP102 | DEV_R056 makes MP102's R-based codegen assumption explicit at the language level |
+| MP159 | Sibling — both elevate implicit conventions to explicit rules (Layer 1 immutability / language choice) |
+| MP160 | Sibling — both are AI-failure-mode-to-explicit-rule elevations triggered during qef-product-master-redesign Phase 9 |
+| DM_R028 | DM_R028's `{platform}_ETL_{datatype}_{phase}.R` naming implies R extension; DEV_R056 makes it explicit |
+| DEV_R052 | Sister rule in the "decision discipline" family — both advisory, both rely on principle visibility at decision time |
+| DEV_R055 | Sister rule in the "decision discipline" family |
+| SO_R038 | SO_R038's snake_case ASCII field naming applies to R authoring; DEV_R056 governs the language those rules apply within |
+
+## References
+
+- spectra change `dev-r056-r-first-language` (2026-04-28)
+- GitHub issue #498 (rule proposal source)
+- Trigger: AI agent (me) proposed `gen_product_attribute_schemas.py` during qef-product-master-redesign 9.2 planning, without checking project conventions. User caught it and proposed elevating the implicit R-first convention to a normative rule.

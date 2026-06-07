@@ -1,0 +1,17 @@
+audit_time=2026-02-11 09:47:35 +0800
+sheet_id=1istNxsgutIfTC9faLM7HdsQzfnphHXLXtahGKYN5oCA
+auth_mode=deauth
+active_product_line_n=15
+profile_lines_checked=15
+profile_lines_with_missing=0
+profile_lines_with_extra=0
+profile_total_missing=0
+profile_total_extra=0
+competitor_lines_checked=15
+competitor_lines_with_missing=0
+competitor_lines_with_extra=0
+competitor_total_missing=0
+competitor_total_extra=0
+qef_source_asin_total=337
+qef_missing_in_competitor_source_total=2
+qef_missing_in_competitor_local_total=2

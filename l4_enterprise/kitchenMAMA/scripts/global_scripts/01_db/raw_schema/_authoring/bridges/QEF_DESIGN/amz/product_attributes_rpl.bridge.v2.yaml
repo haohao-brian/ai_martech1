@@ -1,0 +1,239 @@
+prerawdata_source:
+  company: QEF_DESIGN
+  platform: amz
+  source_type: csv
+  source_uri: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_rpl.csv
+  sheet_name: ~
+  schema_fingerprint:
+    algorithm: sha256
+    value: 063b1ceb4a5cd8ab4b5a471839c9c8f93eb0920c4301ba68946b9afdf3f8c48c
+    fingerprinted_against: df_product_profile_rpl.csv (full read, 15 rows; canonical
+      helper)
+    fingerprinted_at: '2026-05-05T09:37:07Z'
+canonical_target:
+  datatype: product_attributes_rpl
+  platform: amz
+  table: df_amz_product_attributes_rpl___raw
+  schema_yaml_path: 01_db/raw_schema/_authoring/companies/QEF_DESIGN/product_attribute_schemas.yaml
+  platform_extension_yaml_path: 01_db/raw_schema/_authoring/platform_extensions/amz_extensions.yaml
+field_extractors:
+  brand:
+    type: column
+    name: 品牌
+  sales_platform:
+    type: column
+    name: 銷售平台
+  sku:
+    type: column
+    name: SKU
+  asin:
+    type: column
+    name: ASIN
+  product_name:
+    type: column
+    name: 商品名稱
+  rank:
+    type: column
+    name: 排名
+  is_competitor:
+    type: column
+    name: 競爭對手
+  color_lens:
+    type: column
+    name: 鏡片顏色
+  rating_no_distortion:
+    type: column
+    name: 無失真
+  rating_comfortable_wear:
+    type: column
+    name: 穿戴舒適
+  rating_durability:
+    type: column
+    name: 耐用性
+  rating_clear_vision:
+    type: column
+    name: 視野清晰
+  review_rating:
+    type: column
+    name: 評論星級
+  review_count:
+    type: column
+    name: 評論則數
+  price:
+    type: column
+    name: 價格
+  quantity:
+    type: column
+    name: 數量
+  material_lens:
+    type: column
+    name: 鏡片材質
+  dimension_lens_size:
+    type: column
+    name: 鏡片尺寸
+  dimension_lens_width:
+    type: column
+    name: 鏡片寬度
+  dimension_lens_height:
+    type: column
+    name: 鏡片高度
+  weight:
+    type: column
+    name: 重量
+  country_of_origin:
+    type: column
+    name: 原產地
+  feature_polarized:
+    type: column
+    name: 偏光功能
+  protection_uv:
+    type: column
+    name: 紫外線防護
+  feature_reduce_glare:
+    type: column
+    name: 降低眩光
+  feature_impact_resistant:
+    type: column
+    name: 耐衝擊
+  feature_true_color:
+    type: column
+    name: 真實色彩
+  feature_color_contrast:
+    type: column
+    name: 顏色對比
+  feature_anti_scratch:
+    type: column
+    name: 防刮功能
+  feature_anti_fog:
+    type: column
+    name: 防霧功能
+  feature_anti_peel:
+    type: column
+    name: 防剝離功能
+  feature_anti_reflection:
+    type: column
+    name: 防反射功能
+  feature_oil_repellent:
+    type: column
+    name: 防油功能
+  feature_waterproof:
+    type: column
+    name: 防水功能
+  material_eco_friendly:
+    type: column
+    name: 環保材質
+  standard_ansi_z80_3:
+    type: column
+    name: ANSI.Z80.3標準
+  standard_ansi_z87_1:
+    type: column
+    name: ANSI.Z87.1標準
+  pkg_installation_guide:
+    type: column
+    name: 安裝指引
+  accessory_keychain:
+    type: column
+    name: 鑰匙扣
+  protection_eye_strain:
+    type: column
+    name: 避免眼睛疲勞
+  feature_easy_to_install:
+    type: column
+    name: 易於安裝
+  protection_eye_general:
+    type: column
+    name: 眼睛保護
+  feature_precise_fit:
+    type: column
+    name: 精準合適
+  scene_rainy:
+    type: column
+    name: 雨天場景
+  scene_outdoor:
+    type: column
+    name: 戶外場景
+  activity_road_cycling:
+    type: column
+    name: 公路騎行
+  activity_range_training:
+    type: column
+    name: 靶場訓練
+  activity_golf:
+    type: column
+    name: 高爾夫運動
+  activity_fishing:
+    type: column
+    name: 釣魚
+  activity_driving:
+    type: column
+    name: 駕駛
+  activity_daily:
+    type: column
+    name: 日常活動
+  feature_high_value:
+    type: column
+    name: CP值高
+  accessory_wipe_cloth:
+    type: column
+    name: 擦拭布
+unused_source_columns:
+- etl_import_timestamp
+- etl_import_source
+- etl_product_line_id
+- etl_phase
+generated_at: '2026-04-29T09:06:48Z'
+generated_by: 'gen_product_attribute_bridges.R (qef-product-master-redesign 9.6, #460)'
+refingerprinted_at: '2026-05-05T09:37:07Z'
+refingerprint_session: qef-batch-bridges-ensemble-2026-05-05 (used canonical infer_column_types_for_fingerprint
+  helper)
+reviewed_by:
+  human_reviewer: kiki830621
+  review_mode: glue-ensemble-v1-batch
+  ai_reviewers:
+  - codex-cli@gpt-5.5-xhigh
+  - claude-opus-4-7-correctness
+  - claude-opus-4-7-devils-advocate
+  findings_summary:
+    critical: 0
+    high: 0
+    medium: 1
+    low: 3
+    suggestions: 1
+    resolved_in_iterations: 1
+  approved_at: '2026-05-05T13:00:00Z'
+  approved_in_commit: ''
+  review_artifacts: product_attributes_rpl.bridge.review.md
+  scoping_note: 'Batch ensemble (4 bridges: bys/hsg/its/rpl). Security reviewer skipped
+    per scoping policy. correctness flagged HIGH on country_of_origin mojibake ''â‎China''
+    — DA downgraded to LOW (1 row of 15, isolated Gsheet copy-paste corruption, NOT
+    systemic). hsg/its blocked separately by Layer 1 issues; rpl ship-able with mojibake
+    fix deferred to Gsheet hygiene.'
+findings_resolutions:
+- finding_id: M-1
+  severity: MEDIUM
+  description: Bridge yaml previously shipped with reviewed_by REQUIRES_HUMAN_REVIEW
+    placeholder
+  resolution: fixed inline this commit — placeholder replaced with structured form
+    per MP102 v1.3
+  accepted_by: kiki830621
+- finding_id: L-1
+  severity: LOW
+  description: country_of_origin has mojibake 'â‎China' (U+200E LRM double-encoded
+    UTF-8 → CP1252 → UTF-8) in 1 row of 15 (correctness HIGH downgraded by DA to LOW
+    per cross-bridge analysis)
+  resolution: accepted — Gsheet hygiene issue, not bridge defect. File follow-up to
+    clean source row at next Gsheet audit. DA verified isolated single-cell corruption,
+    no other mojibake patterns in rpl CSV.
+  accepted_by: kiki830621
+- finding_id: L-2
+  severity: LOW
+  description: Small sample (15 rows) — value_map may be incomplete for rare sentinels
+  resolution: accepted — DA-NEW 2.4 finding. Document in bridge comment header at
+    next refresh; bridge re-iteration needed when sample grows.
+  accepted_by: kiki830621
+- finding_id: L-3
+  severity: LOW
+  description: BOM-prefix on first column header (systemic per blb SUGGESTION-5)
+  resolution: accepted — runtime readr handles BOM transparently; cosmetic mismatch
+    with validator only
+  accepted_by: kiki830621

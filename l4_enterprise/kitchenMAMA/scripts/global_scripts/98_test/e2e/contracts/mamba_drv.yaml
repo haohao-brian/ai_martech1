@@ -1,0 +1,112 @@
+# MP165 v1.3 DRV-Output Shape Contracts — MAMBA
+# Spectra change: mp165-drv-output-shape-gate (#668)
+#
+# Gate: shared/global_scripts/23_deployment/drv_output_shape_gate.R
+# Active platforms per app_config.yaml > pipeline > platforms: cbz + eby
+# DRV groups: D00, D01, D04, D05 (NO D03 — see #374 ship_country gap)
+#
+# Severity choices (2026-05-14 baseline):
+#   - DNA tables (D01, cross-platform): critical
+#   - Macro tables (D05, cross-platform): critical
+#   - eby Poisson tables (D04): critical with L3 (all 4 predictor_types
+#     populated: product_attribute, time_feature, comment_attribute, structural)
+#   - cbz Poisson tables: NOT declared — current app_data has no
+#     `df_cbz_poisson_analysis_*` tables. cbz D04 is in drv_groups but
+#     produces nothing yet (separate effort; will declare contracts once
+#     cbz Poisson lands).
+#   - D03 (position): not declared — D03 absent from drv_groups (#374)
+#
+# Sunset: 2026-06-13 (per MP165 v1.3 default)
+
+company: MAMBA
+
+drv_contracts:
+
+  # --- eby platform: Poisson + DNA ---
+  eby:
+
+    # D04: Poisson Precision Marketing per product line + cross-PL
+    df_eby_poisson_analysis_all:
+      l2_row_count_min: 300
+      l3_predictor_types:
+        required:
+          - product_attribute
+          - time_feature
+          - comment_attribute
+          - structural
+        min_count_per_type: 1
+      severity: critical
+
+    df_eby_poisson_analysis_alf:
+      l2_row_count_min: 30
+      severity: critical
+
+    df_eby_poisson_analysis_irf:
+      l2_row_count_min: 30
+      severity: critical
+
+    df_eby_poisson_analysis_pre:
+      l2_row_count_min: 30
+      severity: critical
+
+    df_eby_poisson_analysis_rek:
+      l2_row_count_min: 30
+      severity: critical
+
+    df_eby_poisson_analysis_tur:
+      l2_row_count_min: 50
+      severity: critical
+
+    df_eby_poisson_analysis_wak:
+      l2_row_count_min: 30
+      severity: critical
+
+  # --- Cross-platform DNA + macro (D01 + D05) ---
+  all:
+
+    # D01: Customer DNA Analysis (cross-platform aggregation)
+    df_customer_dna:
+      l2_row_count_min: 500
+      severity: critical
+
+    df_customer_profile:
+      l2_row_count_min: 500
+      severity: critical
+
+    df_dna_by_customer:
+      l2_row_count_min: 5000
+      severity: critical
+
+    df_dna_category_counts:
+      l2_row_count_min: 30
+      severity: critical
+
+    df_dna_plot_data:
+      l2_row_count_min: 1000
+      severity: critical
+
+    df_dna_summary_stats:
+      l2_row_count_min: 10
+      severity: critical
+
+    df_profile_by_customer:
+      l2_row_count_min: 1000
+      severity: critical
+
+    df_product_line_profile:
+      l2_row_count_min: 5
+      severity: critical
+
+    # D05: Macro Trend Analysis
+    df_macro_monthly_summary:
+      l2_row_count_min: 12
+      severity: critical
+
+    # Position (BrandEdge): D03 disabled in pipeline (#374) but table
+    # exists from earlier ETL; warning severity until D03 fully wired.
+    df_position:
+      l2_row_count_min: 20
+      severity: warning
+
+# Per-company opt-in to strict-mode before sunset (default false)
+strict_mode: false

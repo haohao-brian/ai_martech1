@@ -1,0 +1,54 @@
+---
+title: "CHANGELOG: Reports and Decisions"
+subtitle: "Issue tracking is managed in GitHub Issues"
+chapter: "CHANGELOG"
+category: "tracking"
+number: "CHANGELOG"
+date-created: "2025-08-23"
+date-modified: "2026-02-11"
+author: "MAMBA Team"
+type: "index"
+law: "Change Management"
+article: "Index"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    number-sections: true
+---
+
+# Overview
+
+From 2026-02 onward, issue tracking uses **GitHub Issues** as the single source of truth.
+
+This local `changelog/` keeps:
+
+- implementation reports
+- plan archives
+- ADRs and migration records
+- historical archives
+
+# Source of Truth
+
+- Issue lifecycle (`open`, `in progress`, `closed`) is managed in GitHub.
+- Do not create new issue tracker files under `changelog/issues/`.
+- Existing files under `changelog/issues/` are legacy historical records.
+
+# Local Documentation Workflow
+
+1. Open/update issue in GitHub (example: `#148`).
+2. Implement changes in code.
+3. Write local report in `changelog/reports/` with issue reference.
+
+Recommended filename:
+
+`YYYY-MM-DD_issue-<number>_<short-topic>.md`
+
+# Directory Structure
+
+```text
+changelog/
+├── issues/    # legacy only
+├── reports/   # active local documentation
+└── archive/   # deprecated/historical artifacts
+```

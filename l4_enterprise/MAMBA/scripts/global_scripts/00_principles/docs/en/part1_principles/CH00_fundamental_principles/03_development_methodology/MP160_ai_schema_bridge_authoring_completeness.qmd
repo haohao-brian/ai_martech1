@@ -1,0 +1,275 @@
+---
+id: "MP160"
+title: "AI Schema/Bridge Authoring Completeness"
+type: "meta-principle"
+category: "development_methodology"
+date_created: "2026-04-28"
+date_modified: "2026-04-29"
+author: "Claude (spectra change mp160-ai-authoring-completeness, GitHub issue #497; sister back-edit per spectra change bridge-end-to-end-realization-principle, GitHub issue #503)"
+status: "active"
+version: "1.1"
+weight: 160
+related_to:
+  - "MP029": "Discrepancy / No Fake Information (sibling: MP029 forbids fabrication, MP160 forbids omission via scaffolding)"
+  - "MP157": "Two-Layer YAML Authoring (MP160 governs how completely each layer must be authored)"
+  - "MP158": "Glue-Driven Raw Layer Extensibility (Step 1 'add to canonical schema' must be FULL, not scaffolded)"
+  - "MP159": "Glue Authoring Boundary Immutability (full Layer 1 makes 'I need to mutate Layer 1' reduce to 'I need a Layer 2 ignored_columns entry')"
+  - "MP162": "Bridge End-to-End Realization (sister: MP160 governs authoring-time exhaustiveness on the WRITE side; MP162 governs consumption-time exhaustiveness on the RUN side; both required for end-to-end correctness — exhaustive write without exhaustive run gives shelf-ware)"
+  - "DM_R065": "Schema Dedup Discipline (companion: dedup ensures no duplicates; MP160 ensures no omissions)"
+  - "SO_R038": "Schema Authoring YAML Naming Convention (companion: naming rules apply only to enumerated fields; MP160 ensures all fields are enumerated to be named)"
+  - "MP102": "ETL Output Standardization (the schema files MP160 governs the authoring discipline for)"
+implements:
+  - "COMPLETENESS": "Full enumeration at authoring time"
+  - "ANTI_SCAFFOLDING": "No partial-completion shortcuts when AI is the author"
+binds:
+  - "shared/global_scripts/01_db/raw_schema/_authoring/core_schemas.yaml"
+  - "shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/*.yaml"
+  - "shared/global_scripts/01_db/raw_schema/_authoring/bridges/{COMPANY}/{platform}/{source}.bridge.yaml"
+  - "shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/validate_bridge_yaml.R"
+  - "shared/global_scripts/00_principles/.claude/skills/glue-bridge/SKILL.md"
+---
+
+# MP160: AI Schema/Bridge Authoring Completeness
+
+## Core Statement
+
+**When AI authors structured artifacts that have an enumerable element set, the AI SHALL enumerate the set in full at authoring time. Partial-completion patterns are forbidden.**
+
+The artifacts in scope are: schema yaml field lists (`required_fields`, `optional_fields`, `aliases`), bridge yaml `column_mapping`, bridge yaml `ignored_columns`, bridge yaml `value_map`, datatype declarations under `_authoring/platform_extensions/`, and any future yaml whose semantic value derives from completeness of an enumeration.
+
+A "partial-completion pattern" is any of: `optional_fields:` blocks left empty or marked "TODO" / "TBD" / "scaffold for later"; completing N-of-M items with intent to do the remaining M-N later; full content for one company / platform / datatype with `# TODO: replicate` for the rest; `ignored_columns:` lists shorter than `(source columns) - (column_mapping covered)` without explicit per-omission justification.
+
+## Architectural Context
+
+MP160 sits at the intersection of three existing rules:
+
+```
+                    MP029 (No Fake Information)
+                            |
+                            | sibling
+                            v
+   MP157/158/159 -- MP160 (AI Authoring Completeness) -- DM_R065/SO_R038
+   (where to put,     (how completely to author        (per-field
+    when to add)        each artifact)                  discipline)
+```
+
+- MP157 says **where** content goes (Layer 1 vs Layer 2).
+- MP158 says **when** to extend the raw layer (3-step combinator).
+- MP159 says **what stays immutable** during bridge authoring.
+- **MP160 says how completely each artifact must be authored when AI is the author.**
+
+Without MP160, the prior three principles allow a half-finished artifact whose validator-passing structure hides authoring debt.
+
+## Decision Rule
+
+Before submitting an enumerable artifact, the AI SHALL verify:
+
+| Question | Required Answer |
+|---|---|
+| Are all known elements of the enumerable set listed? | YES (no `# TODO` placeholders) |
+| For each per-PL / per-platform / per-datatype variant, is the enumeration done for every variant? | YES (no "pilot one then copy" shortcuts) |
+| Is the union of `column_mapping` keys + `ignored_columns` exactly equal to the source's column set? | YES (mechanical equality check) |
+| Does each `optional_fields:` entry have at least `type:` + `description:`? | YES |
+
+If any answer is NO, the artifact is not ready to submit — finish the enumeration first.
+
+## Rationale
+
+### Reason 1 — AI authoring time is cheap; downstream rework cost is high
+
+A human authoring 12 per-PL datatypes with ~100 columns each might reasonably scaffold-and-iterate to manage cognitive load. An AI in a single session does not have human fatigue; the marginal cost of "do the remaining 11 PLs while the schema is paged in" is minutes, while the cost of revisiting the artifact a week later — re-reading the schema, re-establishing context, re-deriving the convention — is hours. AI authoring SHALL pay the upfront cost in full because that cost is asymmetric.
+
+### Reason 2 — Partial scaffolding hides uncertainty behind valid syntax
+
+A datatype with only `required_fields:` and an empty `optional_fields:` looks valid to the meta-schema validator: every required key is present, every value has a legal type. But it tells downstream readers nothing about what fields the source actually has. Bridges authored against such a scaffold then "discover" fields ad-hoc, defeating MP159's Layer 1 immutability premise — because the "missing" fields look like they justify Layer 1 edits, when really they were just deferred at authoring time.
+
+### Reason 3 — Spectra `/spectra-propose` Step 6 already enforces this for spectra artifacts
+
+The spectra-propose skill's Step 6 "No Placeholders" check already forbids "TBD" / "TODO" / "implement later" / "Add appropriate error handling" in spectra change artifacts (proposal / design / spec / tasks). MP160 elevates this rule from skill-internal to principle-system normative so it applies to ALL AI schema authoring (not just spectra-driven changes). The discipline that produced the qef-product-master-redesign artifacts should produce schema artifacts too.
+
+### Reason 4 — MP159's bounded-cost guarantee depends on it
+
+MP158 axis-3 promises that adding company N costs only Step 3 (write a bridge). This guarantee assumes Steps 1-2 (schema + DDL) are done. If Step 1 was authored as a scaffold ("required_fields done, optional_fields TODO"), then the bridge author for company N discovers fields that the schema did not enumerate, and is tempted to edit Layer 1 — which violates MP159. MP160 closes this hole by requiring Step 1 to be fully enumerated before any bridge is authored against it.
+
+## Forbidden Patterns
+
+### Forbidden A — Empty optional_fields with deferred enumeration
+
+```yaml
+# WRONG: violates MP160
+products:
+  required_fields:
+    product_id: { type: VARCHAR, required: true }
+    asin: { type: VARCHAR, required: true }
+  optional_fields:
+    # TODO: populate from source after pilot validates the structure
+```
+
+**Why wrong**: validator passes, but downstream bridge authors have to re-discover the source's columns. The "TODO" is debt that compounds when the bridge author for another company repeats the discovery.
+
+```yaml
+# RIGHT: enumeration done in full at authoring time
+products:
+  required_fields:
+    product_id: { type: VARCHAR, required: true }
+    asin: { type: VARCHAR, required: true }
+  optional_fields:
+    title: { type: VARCHAR, description: "Product title from source" }
+    brand: { type: VARCHAR, description: "Brand name" }
+    description_zh: { type: TEXT, description: "Chinese description" }
+    rating: { type: DOUBLE, description: "Average rating 0-5" }
+    review_count: { type: INTEGER, description: "Total review count" }
+    # ... every column the source has, listed here
+```
+
+### Forbidden B — Pilot one variant then "TODO replicate"
+
+```yaml
+# WRONG: violates MP160
+# qef_product_profile.yaml
+product_lines:
+  blb:
+    columns:
+      asin: { type: VARCHAR }
+      brand: { type: VARCHAR }
+      # ... 80 more columns fully enumerated
+  jhb:
+    # TODO: replicate the blb structure for the other 11 PLs after blb pilot validates
+```
+
+**Why wrong**: The "pilot one then copy" pattern looks efficient but produces an artifact that fails the union-equality check (`source columns == column_mapping ∪ ignored_columns`) for 11 of the 12 PLs. Subsequent passes re-do the work without the original author's context.
+
+```yaml
+# RIGHT: all 12 PLs enumerated in one pass
+product_lines:
+  blb: { columns: { ... 80+ columns ... } }
+  jhb: { columns: { ... 80+ columns ... } }
+  rmd: { columns: { ... 80+ columns ... } }
+  # ... all 12 PLs, each fully enumerated
+```
+
+### Forbidden C — column_mapping covers required only, optional un-mapped without justification
+
+```yaml
+# WRONG: violates MP160
+column_mapping:
+  product_id: { from_column: "ASIN" }
+  brand: { from_column: "Brand" }
+  # ... only the canonical-required fields mapped
+ignored_columns: []
+```
+
+**Why wrong**: source has 80 columns; mapping covers 8; the remaining 72 columns are in source but neither mapped nor ignored. The bridge silently drops them at runtime. The validator catches this, but the underlying authoring discipline is what MP160 fixes — the AI should not produce such an artifact in the first place.
+
+```yaml
+# RIGHT: every source column accounted for
+column_mapping:
+  product_id: { from_column: "ASIN" }
+  brand: { from_column: "Brand" }
+  title: { from_column: "Title" }
+  # ... every canonical-mappable column listed
+ignored_columns:
+  - column: "internal_tracking_id"
+    reason: "Per-source operational metadata; not canonical"
+  - column: "legacy_score"
+    reason: "Deprecated field replaced by 'rating' in 2024"
+  # ... every un-mapped source column listed with reason
+```
+
+### Forbidden D — `ignored_columns:` shorter than the un-mapped set
+
+The mechanical check: `set(source_columns) === set(column_mapping_keys) ∪ set(ignored_columns)`. If the source has 80 columns, `column_mapping` covers 30, then `ignored_columns` MUST list exactly 50 (with per-entry `reason`). A shorter list is forbidden because the omitted columns are silently lost.
+
+## Compliant Patterns
+
+### Compliant 1 — Full enumeration in one authoring pass
+
+All 12 of 12 per-PL datatypes are authored in a single session with full content. No "TODO replicate". No empty `optional_fields:`. Every source column is either in `column_mapping` or in `ignored_columns` with a `reason:`.
+
+### Compliant 2 — Exhaustive `optional_fields:`
+
+`optional_fields:` enumerates every Gsheet column not already in `required_fields:`, with each entry having `type:` + `description:` + (if special handling needed) `notes:`. The bridge author for the next company opens the schema and sees every field that the source has, with no "TODO" gaps.
+
+### Compliant 3 — Bridge yaml union-equality
+
+`source_columns_count == column_mapping.keys.length + ignored_columns.length`. The mechanical equality holds. Every source column is auditable: either it maps to a canonical field, or it is explicitly ignored with a documented reason.
+
+## Files Bound
+
+| File | Status under MP160 |
+|---|---|
+| `shared/global_scripts/01_db/raw_schema/_authoring/core_schemas.yaml` | All datatypes' `required_fields` + `optional_fields` SHALL be fully enumerated |
+| `shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/*.yaml` | Every platform extension SHALL list every per-platform field, no scaffolding |
+| `shared/global_scripts/01_db/raw_schema/_authoring/bridges/{COMPANY}/{platform}/{source}.bridge.yaml` | `column_mapping` + `ignored_columns` SHALL exhaustively cover all source columns |
+| `shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/validate_bridge_yaml.R` | SHALL include MP160 exhaustive-enumeration check |
+| `shared/global_scripts/00_principles/.claude/skills/glue-bridge/SKILL.md` | Step 6 SHALL mandate `ignored_columns:` exhaustiveness |
+
+## Change Discipline
+
+### Adding a new MP160-bound artifact
+
+The author SHALL:
+
+1. Enumerate the full set of fields / variants / source columns at authoring time.
+2. For bridge yaml: ensure `set(source_columns) == set(column_mapping.keys) ∪ set(ignored_columns)`.
+3. For schema yaml: ensure `optional_fields:` is non-empty whenever the source has columns beyond `required_fields:`.
+4. Run `validate_bridge_yaml.R` (for bridge yamls) and `_build.R` (for schema yamls). Both SHALL pass.
+5. Trigger IC_P002 cross-company verification (if Layer 1) per MP102 v1.2.
+
+### Validator-level enforcement
+
+`validate_bridge_yaml.R` SHALL implement:
+
+- **MP160 exhaustive-enumeration check**: reject bridge yamls where source columns exist that are neither in `column_mapping` nor in `ignored_columns`. Severity: CRITICAL.
+- **MP160 ignored-columns reason check**: every `ignored_columns:` entry SHALL have a `reason:` field. Severity: WARNING.
+- **MP160 optional-fields shape check** (extending `_build.R`): when `optional_fields:` exists in a datatype declaration, every entry SHALL have at least `type:` and `description:`. Severity: WARNING.
+
+### Skill-level guidance
+
+`glue-bridge/SKILL.md` Step 6 ("Generate the draft bridge yaml") SHALL state explicitly: "After listing the canonical fields you mapped, list every remaining source column in `ignored_columns:` with a `reason:`. The `column_mapping.keys ∪ ignored_columns` MUST equal the full source column set. Partial coverage is forbidden under MP160."
+
+## Exemptions
+
+The following situations are NOT MP160 violations:
+
+- **Genuinely unknown runtime types**: a field whose source data type cannot be determined until runtime (e.g., dynamic free-text columns whose semantic varies per row) MAY be authored without `type:`, but MUST have a `notes:` entry explaining the dynamism. The field SHALL still be present in the enumeration.
+- **Work-in-progress bridges in `wip/`**: bridges whose source spec is not yet finalized MAY be partial, BUT MUST be located in a separate `bridges/{COMPANY}/wip/` subdirectory, not in the canonical `bridges/{COMPANY}/{platform}/` tree. WIP bridges are not consumed by the runtime.
+- **Newly-discovered source columns post-merge**: if a bridge passed validation, was merged, and then the source schema gains a new column, updating the bridge to add the new column to `column_mapping` or `ignored_columns:` is a follow-up task, not a MP160 violation of the original author.
+
+## Enforcement
+
+### Skill-level (advisory)
+
+The `glue-bridge` skill (Step 6) and `spectra-propose` skill (Step 8 inline self-review) document MP160 and instruct the agent to refuse partial-completion patterns.
+
+### Validator-level (mechanical)
+
+`validate_bridge_yaml.R` includes the exhaustive-enumeration CRITICAL check. A bridge that fails this check cannot be approved.
+
+### Process-level (review discipline)
+
+Pull requests / spectra changes touching MP160-bound files SHALL include either:
+
+- A passing `validate_bridge_yaml.R` run, OR
+- An explicit declaration that the artifact is in `wip/` and not yet runtime-consumed.
+
+## Cross-References
+
+| Principle | Relationship |
+|---|---|
+| MP029 | Sibling: MP029 forbids fabrication, MP160 forbids omission via scaffolding |
+| MP157 | MP160 governs how completely each of MP157's two layers must be authored |
+| MP158 | MP160 hardens MP158 Step 1 ("add new datatype to canonical schema") to mean "FULLY add", not "scaffold and iterate" |
+| MP159 | MP160 strengthens MP159's premise: full Layer 1 makes "I need to mutate Layer 1 for this source column" reduce to "I need a Layer 2 ignored_columns entry" |
+| DM_R065 | Companion: dedup ensures no duplicates; MP160 ensures no omissions |
+| SO_R038 | Companion: naming rules apply only to enumerated fields; MP160 ensures all fields are enumerated to be named |
+| MP102 | The schema files MP160 governs the authoring discipline for. **MP102 v1.3 (#500) sister extension**: MP160 governs how completely AI authors *artifacts* (schema/bridge yaml content); MP102 v1.3 governs how completely AI ensemble *reviews* those artifacts (self-converging loop with structured `reviewed_by`). Both are completeness rules: MP160 closes the authoring gap, MP102 v1.3 closes the review gap. |
+| DEV_R056 | Sister principle on the language axis. MP160 governs HOW completely AI authors enumerable artifacts; DEV_R056 governs WHAT LANGUAGE the artifacts and authoring tools use. Both are "AI failure mode → explicit rule" elevations triggered during qef-product-master-redesign Phase 9. |
+| MP161 | Sibling principle on the scope axis. MP160 governs HOW completely AI authors enumerable artifacts; MP161 governs WHERE schemas live (universal vs company-scoped). Both elevations from implicit-to-explicit triggered during qef-product-master-redesign Phase 9 review. |
+
+## References
+
+- spectra change `mp160-ai-authoring-completeness` (2026-04-28)
+- GitHub issue #497 (MP160 proposal source)
+- Trigger: user feedback during qef-product-master-redesign Phase 9 task 9.2 review — "bridge的原則就是每次都要做好做滿全部都做（因為是AI進行，不要省下步驟），這要家入principles裡面，可能principle要有專門規範bridge的部分（是不是其實已經有了）"
+- Survey conclusion: MP102/MP156/MP157/MP158/MP159/DM_R065/SO_R038/MP029 collectively cover where/when/what-stays-immutable but NOT how-completely. MP160 fills this gap.

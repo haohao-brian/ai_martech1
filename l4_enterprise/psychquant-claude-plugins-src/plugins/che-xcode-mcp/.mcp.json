@@ -1,0 +1,12 @@
+{
+  "xcode": {
+    "type": "stdio",
+    "command": "${CLAUDE_PLUGIN_ROOT}/bin/che-xcode-mcp-wrapper.sh",
+    "env": {
+      "ASC_KEY_ID": "",
+      "ASC_ISSUER_ID": "",
+      "ASC_PRIVATE_KEY_PATH": ""
+    },
+    "description": "App Store Connect MCP Server — 103 tools for TestFlight, apps, metadata, subscriptions, provisioning, analytics, Xcode Organizer crash logs, and more"
+  }
+}

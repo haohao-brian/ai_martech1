@@ -1,0 +1,43 @@
+# Deployment repo .gitignore
+# 此 repo 是 Posit Connect Cloud 的部署來源
+
+# R session
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+
+# Environment (credentials set in Posit Connect UI)
+.env
+
+# Data files (production uses Supabase, not local duckdb)
+*.duckdb
+*.wal
+*.sqlite
+*.db
+
+# System
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+logs/
+
+# Development tools
+.shiny-debug/
+.serena/
+.playwright-mcp/
+_targets/
+
+# Large files
+data/
+archive/
+validation/
+tests/
+cache/

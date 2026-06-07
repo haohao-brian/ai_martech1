@@ -1,0 +1,25 @@
+# =============================================================================
+# Archive Version Control Policy
+# =============================================================================
+# 99_archived/ is the ONLY archive directory under version control.
+# It contains curated, organized historical documents.
+# All other archive*/ directories anywhere in the tree are local-only
+# (staging buffers, in-place archives, temp work) and excluded from Git.
+# See: SO_R006 Archiving Standard Rule, Section 8 (Version Control Policy)
+# =============================================================================
+
+# Ignore all archive-like directories everywhere in the tree
+**/archive*/
+**/_archive*/
+**/*_archived*/
+
+# EXCEPT: keep 99_archived (curated historical archive, the single source of truth)
+!99_archived/
+!99_archived/**
+
+# System files
+.DS_Store
+30_global_data/mock_data.duckdb
+
+# Session state (IC_R009 hook)
+**/.current_issue

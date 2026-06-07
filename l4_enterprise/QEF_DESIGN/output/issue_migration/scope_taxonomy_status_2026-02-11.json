@@ -1,0 +1,39 @@
+{
+  "date": "2026-02-11",
+  "repo": "kiki830621/ai_martech_global_scripts",
+  "active_scope_labels": [
+    "company:MAMBA",
+    "company:QEF_DESIGN",
+    "company:KITCHENMAMA",
+    "company:SHARED",
+    "company:UNKNOWN",
+    "company:SANDBOX_VITALSIGNS_INSIGHTFORGE_BRANDEDGE",
+    "module:BrandEdge"
+  ],
+  "deprecated_scope_labels": [
+    "project:mamba",
+    "project:qef_design",
+    "project:kitchenmama",
+    "project:shared",
+    "project:unknown",
+    "project:sandbox-vitalsigns-insightforge-brandedge",
+    "module:brandedge"
+  ],
+  "issue_counts": {
+    "company:MAMBA": "api_error",
+    "company:QEF_DESIGN": "api_error",
+    "company:KITCHENMAMA": "api_error",
+    "company:SHARED": "api_error",
+    "company:UNKNOWN": "api_error",
+    "company:SANDBOX_VITALSIGNS_INSIGHTFORGE_BRANDEDGE": "api_error",
+    "module:BrandEdge": "api_error",
+    "project:mamba": "api_error",
+    "project:qef_design": "api_error",
+    "project:kitchenmama": "api_error",
+    "project:shared": "api_error",
+    "project:unknown": "api_error",
+    "project:sandbox-vitalsigns-insightforge-brandedge": "api_error",
+    "module:brandedge": "api_error"
+  },
+  "taxonomy_rule": "project is container; issue scope is expressed by company:* or module:* labels"
+}
