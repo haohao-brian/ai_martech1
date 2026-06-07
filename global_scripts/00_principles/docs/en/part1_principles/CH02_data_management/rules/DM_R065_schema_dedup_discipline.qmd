@@ -1,0 +1,250 @@
+---
+id: DM_R065
+title: Schema Dedup Discipline
+subtitle: Schema authoring SHALL enforce alias dedup at Layer 1 + multi-column merge syntax at Layer 2
+type: Rule
+category: Data Management
+status: active
+related:
+  - MP157     # Two-Layer YAML Authoring (Layer 1 vs Layer 2 boundary)
+  - MP158     # Glue-Driven Raw Layer Extensibility (3-step pattern this rule supports)
+  - MP159     # Glue Authoring Boundary Immutability (this rule's complement — Layer 2 is the only allowed mutation surface during bridge authoring)
+  - MP102     # ETL Output Standardization (the schema files this rule applies to)
+  - MP154     # Side Effect Defense (avoiding silent ambiguity in alias resolution)
+  - DM_R028   # ETL Data Type Separation (table naming this rule preserves)
+  - DOC_R009  # Triple-Layer Sync (this rule itself follows DOC_R009)
+version: 1.0.0
+date-created: "2026-04-28"
+author: "Claude (spectra change qef-product-master-redesign Phase 9 Review Addendum, D13)"
+law: Data Management
+article-number: Rule 65
+parent_principle: MP102
+triggered_by: "Issue #493 — Phase 9 review surfaced 13+ within-field alias dups + 1 cross-field SKU collision in core_schemas.yaml; needed multi-column merge syntax for upcoming 18 bridges"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+---
+
+# DM_R065: Schema Dedup Discipline {#overview}
+
+## Rule
+
+The schema authoring system SHALL enforce three dedup rules:
+
+1. **Within-field aliases** in `core_schemas.yaml` SHALL be normalized (lowercase + trimws + strip non-alphanumerics); only one representative per normalized form is kept. The yaml is treated as a `set-of-normalized-string`, not a free-form list.
+
+2. **Cross-field aliases** SHALL NOT collide: a single normalized alias key SHALL NOT appear in two different fields' `aliases` lists within the same datatype.
+
+3. **Multi-column merge** lives in Layer 2: when a prerawdata source has multiple columns mapping to a single canonical field, the bridge yaml SHALL use the new `from_columns: [<col1>, <col2>, ...]` + `merge_strategy: <coalesce | concat | first_non_null>` syntax. Layer 1 canonical schema yaml SHALL NOT enumerate per-source column lists.
+
+## Rationale
+
+Without these three rules, the bridge yaml LLM codegen path (the `glue-bridge` skill Step 5) receives ambiguous canonical schemas:
+
+- An alias listed in two different fields silently lets the LLM pick a side. The PoC `core_schemas.yaml` had `"SKU"` in BOTH `products.product_id.aliases` AND `products.sku.aliases` — the LLM picks one, but the choice is non-deterministic across runs.
+- 13+ within-field cases of the same alias listed in multiple casings (`"asin"` and `"ASIN"`, `"sku"` and `"SKU"`, `"order id"` and `"Order ID"`) inflate the apparent alias surface but resolve to identical normalized keys at runtime — wasting context and adding maintenance burden.
+- When the source has multiple columns mapping to one canonical field, the temptation under MP159 (no Layer 1 mutation during bridge authoring) is to either pick one column and silently drop the other, or to add another alias to canonical schema (which violates MP159). Neither is acceptable. The `from_columns + merge_strategy` Layer 2 primitive is the explicit answer.
+
+## Within-Field Alias Normalization
+
+Aliases are normalized via:
+
+```r
+normalize_alias <- function(s) {
+  s |> tolower() |> trimws() |> gsub(pattern = "[^a-z0-9]", replacement = "")
+}
+```
+
+Examples:
+
+| Yaml entry | Normalized form |
+|---|---|
+| `"asin"` | `"asin"` |
+| `"ASIN"` | `"asin"` |
+| `"Item ID"` | `"itemid"` |
+| `"item-id"` | `"itemid"` |
+| `"item_id"` | `"itemid"` |
+| `"Order ID"` | `"orderid"` |
+| `"order id"` | `"orderid"` |
+
+Two yaml entries that produce the same normalized form are duplicates. Only one entry per normalized form is kept; pick the most natural source-form (often a CamelCase or snake_case canonical variant).
+
+## Cross-Field Collision Resolution
+
+When a normalized alias appears in two different fields, exactly one field keeps it. Resolution heuristics:
+
+1. **Field-name suffix match wins**: `"sku"` belongs to `products.sku.aliases`, not `products.product_id.aliases`, because the field name `sku` literally matches the normalized alias.
+2. **Source-canonical match wins**: `"asin"` belongs to `products.product_id.aliases` (since at amz, ASIN IS the canonical product_id and `aliases` documents this resolution).
+3. **Most-specific field wins**: a generic alias like `"id"` belongs to the most specific field that uses it (avoid putting `"id"` in every `*_id` field's aliases).
+
+If the resolution is ambiguous, the alias is removed from BOTH fields and the source's column name is mapped explicitly via the bridge's `column_mapping.<canonical_field>.from_column:`.
+
+## Layer 2 Multi-Column Merge Syntax
+
+When a prerawdata source has multiple columns mapping to a single canonical field, the bridge yaml uses:
+
+```yaml
+column_mapping:
+  customer_email:
+    from_columns:
+      - "email_primary"
+      - "email_legacy"
+    merge_strategy: "coalesce"
+    coercion: "tolower + trimws"
+```
+
+### Merge strategies
+
+| Strategy | Behavior | Use case |
+|---|---|---|
+| `coalesce` | First non-NA value across listed columns | Email migration (use new column when present, fall back to legacy) |
+| `first_non_null` | Same as `coalesce` (alias for clarity) | Same |
+| `concat` | Concatenate non-NA values with a separator (default `" / "`) | Order notes from multiple sources |
+
+The merge strategy is mandatory when `from_columns` is used (no implicit default). Bridge author must make the choice explicit.
+
+### Single-column case (unchanged)
+
+The existing `from_column: "<col>"` syntax (singular) remains valid for the 1:1 mapping case; bridge authors use `from_columns: [...]` only when a multi-column merge is genuinely needed.
+
+## Files Bound
+
+This rule binds:
+
+- `shared/global_scripts/01_db/raw_schema/_authoring/core_schemas.yaml` — alias dedup applies here
+- `shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/*.yaml` — alias dedup applies here
+- `shared/global_scripts/01_db/raw_schema/_authoring/bridges/{COMPANY}/{platform}/{source}.bridge.yaml` — multi-column merge syntax applies here
+- `shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/validate_bridge_yaml.R` — implements the linter for both
+- `shared/global_scripts/05_etl_utils/glue/fn_apply_mapping.R` — runtime support for `from_columns + merge_strategy`
+
+## Examples
+
+### Compliant: cleaned canonical schema
+
+```yaml
+# core_schemas.yaml — products datatype after dedup cleanup
+products:
+  required_fields:
+    product_id:
+      aliases:
+        - "asin"          # one representative for normalized "asin"
+        - "Item ID"       # one representative for normalized "itemid"
+        - "product id"    # one representative for normalized "productid"
+        - "貨號"
+    sku:
+      aliases:
+        - "sku"           # one representative for normalized "sku"
+        - "Stock Keeping Unit"
+        - "Variant SKU"
+        - "庫存編號"
+```
+
+No within-field dups. No cross-field collision (`"sku"` belongs to `sku.aliases`; `"asin"` belongs to `product_id.aliases`).
+
+### Compliant: bridge using multi-column merge
+
+```yaml
+# bridges/COMPANY_X/amz/customers.bridge.yaml
+column_mapping:
+  customer_email:
+    from_columns:
+      - "email_primary"
+      - "email_archive"
+    merge_strategy: "coalesce"
+    coercion: "tolower + trimws"
+    notes: |
+      Source has historical email migration: email_primary populated from
+      2023-04 onwards; email_archive carries pre-migration values. Coalesce
+      preserves the freshest non-NA email.
+```
+
+### Violating: within-field dup
+
+```yaml
+# DON'T DO THIS
+products:
+  required_fields:
+    product_id:
+      aliases:
+        - "asin"
+        - "ASIN"          # ← violates rule 1: normalizes to "asin", same as above
+        - "Asin"          # ← also "asin" normalized
+        - "sku"
+        - "SKU"           # ← also "sku" normalized
+```
+
+### Violating: cross-field collision
+
+```yaml
+# DON'T DO THIS
+products:
+  required_fields:
+    product_id:
+      aliases:
+        - "SKU"           # ← violates rule 2: same normalized "sku" appears in BOTH
+    sku:
+      aliases:
+        - "SKU"           # ← here too — ambiguous mapping
+```
+
+### Violating: schema mutation when bridge needs multi-column merge
+
+```yaml
+# DON'T DO THIS — under MP159, bridges cannot mutate Layer 1
+# Bridge author wants to map source columns email_primary + email_archive,
+# so they go into core_schemas.yaml and add another alias:
+customers:
+  required_fields:
+    customer_email:
+      aliases:
+        - "email"
+        - "email_primary"   # ← violates MP159 (Layer 1 mutation during bridge authoring)
+        - "email_archive"   # ← also violates MP159
+```
+
+The right answer: leave Layer 1 alone, use `from_columns + merge_strategy` in the bridge yaml.
+
+## Linter Coverage
+
+`validate_bridge_yaml.R` (the lint script bundled with the `glue-bridge` skill) SHALL include:
+
+1. **Within-field dup detector**: load each datatype's `required_fields[*].aliases` + `optional_fields[*].aliases` from `core_schemas.yaml` (and applicable `platform_extensions/{platform}_extensions.yaml`), normalize, fail on dup. Severity: CRITICAL.
+
+2. **Cross-field collision detector**: same load, build a `normalized_alias -> field_name` map, fail on second-seen normalized alias mapping to a different field. Severity: CRITICAL.
+
+3. **value_map normalization detector**: in bridge yaml, scan each `column_mapping.<field>.value_map:` for case-variant brute force (`"Amazon": "AFN"` AND `"AMAZON": "AFN"` — both map to same value but one normalize step would collapse them). Severity: WARNING with suggestion to use `coercion.rule` `tolower`/`toupper` first.
+
+The linter's PoC reference is the dedup probe used in #493 issue body — it demonstrably surfaced the 13+ within-field dups + 1 cross-field collision in the current schema.
+
+## Migration Path
+
+For pre-existing within-field dups in `core_schemas.yaml`:
+
+1. Run the linter; collect the list of normalized-form duplicates.
+2. For each dup, choose one representative (heuristic: most natural source-form, prefer snake_case lowercase if all variants are merely casing differences).
+3. Remove the others. Commit as a single sweep with `Verified:` cross-co trailer (per IC_P002).
+
+For pre-existing cross-field collisions:
+
+1. Apply the resolution heuristics above (field-name suffix match, source-canonical match, most-specific field wins).
+2. If still ambiguous, remove from both fields and require the bridge to use explicit `from_column:` mapping.
+3. Document the decision in the affected datatype's `# comment block` for future authors.
+
+## Anti-Patterns Summary
+
+| Anti-pattern | Correct path |
+|---|---|
+| List `"asin"`, `"ASIN"`, `"Asin"` all in `aliases:` | Pick one (e.g., `"asin"`); the linter rejects the rest |
+| Put `"SKU"` in both `product_id.aliases` and `sku.aliases` | Resolve to `sku.aliases` (field-name suffix match wins) |
+| Add `"email_primary"` and `"email_archive"` as new aliases in canonical to handle a multi-column source | Use `from_columns: + merge_strategy:` in the bridge yaml (Layer 2) |
+| Ship a value_map with both `"Amazon"` and `"AMAZON"` mapping to `"AFN"` | Add `coercion.rule: "tolower"` first then keep one canonical key |
+
+## References
+
+- spectra change `qef-product-master-redesign` Phase 9 Review Addendum (2026-04-28), design decision D13
+- GitHub issue #493 (rule proposal source)
+- Trigger: Phase 9 review surfaced concrete dedup violations in `core_schemas.yaml` plus the missing multi-column merge syntax needed for the upcoming 18 attribute bridges
+- MP159: Glue Authoring Boundary Immutability — DM_R065 is MP159's "safety valve" for un-mappable per-source column structures
+- MP160: AI Schema/Bridge Authoring Completeness — companion principle. DM_R065 ensures no duplicates among enumerated aliases; MP160 ensures no omissions via scaffolding. Together they guarantee schema authoring is both deduplicated and exhaustive.

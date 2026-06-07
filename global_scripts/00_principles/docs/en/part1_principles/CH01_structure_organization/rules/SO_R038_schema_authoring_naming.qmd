@@ -1,0 +1,443 @@
+---
+id: SO_R038
+title: Schema Authoring YAML Naming Convention
+subtitle: Field names + sentinel values + character set rules for schema authoring yamls
+type: Rule
+category: Structure & Organization
+status: active
+related:
+  - MP102     # ETL Output Standardization (the schema files this rule applies to)
+  - MP100     # UTF-8 Encoding Standard (general character rules — this rule extends to schema authoring)
+  - MP154     # Side Effect Defense (sentinel format consistency)
+  - MP157     # Two-Layer YAML Authoring (Layer 1 vs Layer 2 — naming applies to both)
+  - MP159     # Glue Authoring Boundary Immutability (this rule's enforcement scope)
+  - MP163     # Progressive Completeness (multi-field row corruption escalates from sentinel to coverage audit)
+  - DM_R065   # Schema Dedup Discipline (companion rule for content; SO_R038 is for naming)
+  - DEV_R055  # Side Effect Defense implementation (sentinel value patterns)
+  - DOC_R009  # Triple-Layer Sync (this rule itself follows DOC_R009)
+version: 1.1.0
+date-created: "2026-04-28"
+date-updated: "2026-05-02"
+author: "Claude (v1.0 spectra change qef-product-master-redesign Phase 9 Review Addendum D14; v1.1 issue #506 sentinel entity-naming amendment)"
+law: Structure & Organization
+article-number: Rule 38
+parent_principle: MP102
+triggered_by: "v1.0 — GitHub issue #492 — Phase 9 review found inconsistent sentinel naming (UNKNOWN_PRODUCT vs lowercase 'unknown') and no authoritative naming-convention principle for schema authoring yamls. v1.1 — GitHub issue #506 — diagnosing #475 (D_RACING amazon_sales column-shift), candidate sentinel `UNKNOWN_BAD_ROW` passed regex but described row meta-state instead of field entity; rule needed explicit entity-naming semantics, granularity guidance, and multi-field row corruption handling."
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+---
+
+# SO_R038: Schema Authoring YAML Naming Convention {#overview}
+
+## Rule
+
+Schema authoring yaml files (`core_schemas.yaml`, `platform_extensions/*.yaml`, `bridges/{COMPANY}/{platform}/{source}.bridge.yaml`) SHALL follow these naming conventions:
+
+1. **Field names**: snake_case lowercase, ASCII only (a-z, 0-9, underscore). Pattern: `^[a-z][a-z0-9_]*$`. Applies to keys under `required_fields`, `optional_fields`, and `column_mapping`.
+
+2. **Sentinel values**: when a `fallback.value` is a string sentinel for a missing/unknown entity, it SHALL follow the format `UNKNOWN_<ENTITY>` (uppercase + snake_case). Pattern: `^UNKNOWN(_[A-Z][A-Z0-9_]*)?$`. ETL meta sentinels follow the same format (`UNKNOWN_SOURCE`, not `"unknown"`).
+
+3. **Sentinel ENTITY semantics (v1.1)**: `<ENTITY>` SHALL describe **the entity the field represents** (field semantics), NOT row meta-state, NOT failure reason, NOT processing stage. Identification test: "Can this ENTITY be reused on a different field?" If yes — it is not an entity, reject. If only this field's semantic admits it — it is an entity, accept.
+
+4. **Sentinel granularity (v1.1)**: choose between bare `UNKNOWN` and `UNKNOWN_<ENTITY>` based on disambiguation need within the schema's reachable scope (single datatype + downstream join targets).
+
+5. **Multi-field row corruption (v1.1)**: when a single source row has corruption affecting 2+ fields simultaneously (e.g., column-shifted xlsx export), the response is NOT to apply per-field `UNKNOWN_<ENTITY>` and retain the row — it is to drop the row and surface to a coverage audit table (MP163-aligned). Per-field sentinel is for field-level missing data, not row-level corruption.
+
+6. **Character set in machine-read fields**: `coercion.rule`, `pattern`, `fallback.derive` and similar machine-read string fields SHALL contain ASCII only. Half-width punctuation (`(` `)` `,` `.`) only, no full-width or emoji.
+
+7. **Character set in human-read fields**: `description`, `description_zh`, `notes`, `comment`, `rationale` MAY contain UTF-8 (Chinese, Japanese, accented Latin) but SHALL NOT contain control chars or emoji. Full-width punctuation (`（` `）` `，`) is allowed in `description_zh` only.
+
+8. **Layer 1 binding header**: every schema authoring yaml SHALL begin with a normative header comment block declaring the binding principles (MP102 + MP156 + MP157 layer marker) and the controlling spectra change reference for the most recent significant edit.
+
+9. **Datatype-level keys** SHALL be drawn from a registered set in `_meta_schema.yaml`. Unknown keys halt the build (`_build.R` rejects them with a Levenshtein hint).
+
+## Rationale
+
+Without explicit naming rules, "convention" relies on accidental consistency. Phase 9 review (issue #492) surfaced concrete violations:
+
+- `import_source.fallback.value = "unknown"` (lowercase) across all 5 datatypes while every other sentinel uses `UNKNOWN_<ENTITY>` format. The mismatch is ambiguous about whether `"unknown"` is a deliberate exception or just drift; without this rule, every reviewer has to guess.
+- v3.0 thin master refactor introduced `physical_realization: "view"` and `view_source_pattern` as new datatype-level keys. Nothing prevents a future typo `phyiscal_realization` from being silently ignored. The `_meta_schema.yaml` requirement (rule 9) closes that gap.
+- Bridge authors and schema authors are sometimes the same person but the conventions are different: bridge yamls have `column_mapping`, `value_map`, `use_value` (Layer 2 keys), while canonical schemas have `aliases`, `coercion`, `fallback` (Layer 1 keys). The naming rule documents that boundary explicitly so cross-pollination violations (e.g., `aliases` showing up in a bridge yaml) are easy to flag.
+
+### v1.1 — Sentinel entity-naming amendment (issue #506)
+
+v1.0 specified sentinel **format** (regex `^UNKNOWN(_[A-Z][A-Z0-9_]*)?$`) and a few examples (`UNKNOWN_SOURCE`, `UNKNOWN_PRODUCT`), but did not constrain **what `<ENTITY>` should mean**. The regex passes:
+
+| Candidate | Regex pass? | Sound? | Why |
+|---|---|---|---|
+| `UNKNOWN_ASIN` | ✅ | ✅ | `<ENTITY>` = ASIN — describes what the field represents |
+| `UNKNOWN_SOURCE` | ✅ | ✅ | `<ENTITY>` = source — describes what the field represents |
+| `UNKNOWN_BAD_ROW` | ✅ | ❌ | `BAD_ROW` describes a row's meta-state, not what an `asin` field semantically represents |
+| `UNKNOWN_MALFORMED` | ✅ | ❌ | `MALFORMED` is a failure mode, not the field's entity |
+| `UNKNOWN_TODO` | ✅ | ❌ | `TODO` is a processing stage, not the field's entity |
+
+All five pass the regex but only the first two are sound. v1.1 closes this gap with explicit entity semantics (rule 3), an identification test, granularity guidance (rule 4), and a multi-field corruption escalation rule (rule 5).
+
+The v1.1 amendment is also a hardening of the boundary between **field-level missing data** (right place for `UNKNOWN_<ENTITY>` sentinel) and **row-level corruption** (wrong place — should drop the row and surface via MP163 coverage audit). Without rule 5, an author facing a column-shifted source row might write per-field sentinels for asin / quantity / currency / ship_state, technically satisfying every regex while preserving a row whose every field has been moved one position — a row that any downstream join will silently mismatch. Per-field sentinels mask row-level corruption; the row needs to leave the dataset and enter a visible audit, not get patched in place.
+
+Triggered by issue #506: while diagnosing #475 (D_RACING amazon_sales column-shift), the reviewer asked whether `UNKNOWN_BAD_ROW` was a good sentinel name. Regex said yes; semantic review said no. There was no principle text to point at to explain why.
+
+## Field Name Convention
+
+### Compliant
+
+```yaml
+required_fields:
+  product_id:           # snake_case lowercase ASCII ✓
+    type: VARCHAR
+  product_line_id:      # ✓
+    type: VARCHAR
+  is_own_product:       # ✓
+    type: BOOLEAN
+  amz_marketplace_id:   # platform-prefix is just lowercase ASCII ✓
+    type: VARCHAR
+```
+
+### Violating
+
+```yaml
+required_fields:
+  productId:            # ✗ camelCase
+  ProductID:            # ✗ PascalCase
+  product-id:           # ✗ kebab-case
+  productid:            # ✗ no separator (ambiguous reading)
+  品牌:                 # ✗ non-ASCII in machine-read field name
+  PRODUCT_ID:           # ✗ uppercase reserved for sentinels (rule 2)
+```
+
+### Why snake_case lowercase ASCII
+
+- `core_schemas.yaml` field names become DDL column names. SQL identifiers in DuckDB/PostgreSQL are case-insensitive but mixed-case becomes a quoting hazard.
+- ETL/DRV R code accesses these fields via `df$product_id`. R is case-sensitive; lowercase is the dominant convention.
+- LLM bridge codegen sees these names in the prompt context; consistent lowercase reduces ambiguity during column matching.
+
+## Sentinel Value Convention
+
+### Compliant
+
+```yaml
+fallback:
+  rule: "sentinel"
+  value: "UNKNOWN_PRODUCT"      # ✓ UNKNOWN_<ENTITY>
+
+fallback:
+  rule: "sentinel"
+  value: "UNKNOWN_SOURCE"       # ✓ ETL meta also follows the format
+
+fallback:
+  rule: "use_value"
+  value: "UNKNOWN_PRODUCT_LINE" # ✓ multi-word entity uses snake_case after UNKNOWN_
+
+fallback:
+  rule: "sentinel"
+  value: ""                     # ✓ empty string for "no value" semantic (not "unknown")
+                                # is acceptable when the field semantic is "optional empty"
+                                # rather than "missing/unknown"
+```
+
+### Violating
+
+```yaml
+fallback:
+  rule: "sentinel"
+  value: "unknown"              # ✗ lowercase (the canonical violation in #492)
+
+fallback:
+  rule: "sentinel"
+  value: "Unknown"              # ✗ Title Case
+
+fallback:
+  rule: "sentinel"
+  value: "UNKNOWN-PRODUCT"      # ✗ kebab-separator instead of underscore
+
+fallback:
+  rule: "sentinel"
+  value: "TBD"                  # ✗ TBD is a placeholder, not a runtime sentinel
+                                # (TBD in shipped schema is a code review failure)
+
+fallback:
+  rule: "sentinel"
+  value: "未知"                 # ✗ non-ASCII in machine-read field
+                                # (use UNKNOWN_<ENTITY>; UI translation goes via translate())
+
+fallback:
+  rule: "sentinel"
+  value: "UNKNOWN_BAD_ROW"      # ✗ regex passes, but BAD_ROW is row meta-state,
+                                # not the entity the field represents (rule 3)
+
+fallback:
+  rule: "sentinel"
+  value: "UNKNOWN_MALFORMED"    # ✗ MALFORMED is a failure mode, not an entity (rule 3)
+
+fallback:
+  rule: "sentinel"
+  value: "UNKNOWN_TODO"         # ✗ TODO is a processing stage, not an entity (rule 3)
+```
+
+## Sentinel ENTITY Naming Semantics (Rule 3, v1.1)
+
+`<ENTITY>` in `UNKNOWN_<ENTITY>` SHALL describe the **entity the field represents** (field semantics). It SHALL NOT describe:
+
+- the **meta-state of a row** (e.g., `BAD_ROW`, `SHIFTED_ROW`, `CORRUPT_ROW`)
+- a **failure mode** (e.g., `MALFORMED`, `INVALID`, `BROKEN`)
+- a **processing stage** (e.g., `TODO`, `PRE_VALIDATION`, `POST_FIX`, `PENDING`)
+
+### Identification test
+
+For any candidate `<ENTITY>`, ask: **"Could this `<ENTITY>` be reused on a different field?"**
+
+- Yes → not an entity (it describes some other dimension), reject.
+- No → only this field's semantic admits this `<ENTITY>`, accept.
+
+### Examples
+
+| Candidate sentinel | Test answer | Verdict | Reasoning |
+|---|---|---|---|
+| `UNKNOWN_ASIN` | "Could `ASIN` describe a non-asin field?" → No | ✅ entity | `ASIN` is what the asin field represents |
+| `UNKNOWN_SOURCE` | "Could `SOURCE` describe a non-source field?" → No | ✅ entity | `SOURCE` is what the import_source field represents |
+| `UNKNOWN_PLATFORM` | "Could `PLATFORM` describe a non-platform field?" → No | ✅ entity | platform-typed fields only |
+| `UNKNOWN_PRODUCT` | "Could `PRODUCT` describe a non-product field?" → No | ✅ entity | product_id field |
+| `UNKNOWN_BAD_ROW` | "Could `BAD_ROW` describe any field?" → Yes | ❌ row state | Universal — describes the row, not the field |
+| `UNKNOWN_MALFORMED` | "Could `MALFORMED` describe any field?" → Yes | ❌ failure mode | Universal — describes the failure, not the field |
+| `UNKNOWN_CORRUPT` | "Could `CORRUPT` describe any field?" → Yes | ❌ failure mode | Same |
+| `UNKNOWN_TODO` | "Could `TODO` describe any field?" → Yes | ❌ stage | Same |
+
+### Why this matters
+
+Sentinel values are read both by humans (during data inspection) and by joins (when other tables reference this field). An entity-named sentinel (`UNKNOWN_ASIN`) immediately tells a reader the field's purpose AND that data is missing. A meta-state sentinel (`UNKNOWN_BAD_ROW`) tells the reader a row is broken but says nothing about what the field is supposed to be — and worse, if the same `BAD_ROW` value gets used across multiple fields in the same row (a tempting "fix" for column shift), every join key collides on that string.
+
+Field-level missing data has a field-level scope; row-level problems escalate to coverage audit (see rule 5).
+
+## Sentinel Granularity Guidance (Rule 4, v1.1)
+
+Choose between bare `UNKNOWN` and `UNKNOWN_<ENTITY>` based on disambiguation need:
+
+| Scope situation | Recommendation | Example |
+|---|---|---|
+| Single field in datatype uses sentinel; no downstream join compares this column to others | `UNKNOWN` (bare) is acceptable | A free-text `notes` column where `UNKNOWN` is unambiguous |
+| Multiple fields in the same datatype each use a sentinel | **Required**: distinct `UNKNOWN_<ENTITY>` per field | `products` table with both `UNKNOWN_PRODUCT` and `UNKNOWN_BRAND` |
+| Downstream join compares this column to another datatype's column | **Required**: `UNKNOWN_<ENTITY>` to prevent cross-field accidental match | `df_sales.asin = UNKNOWN_ASIN` joined to `df_reviews.asin` should never collide with a `df_sales.brand = UNKNOWN_BRAND` |
+
+### Default choice
+
+When in doubt, prefer `UNKNOWN_<ENTITY>`. It is more verbose but never less safe; bare `UNKNOWN` is only safe when you can prove no disambiguation is needed within the schema's reachable scope, and that proof becomes invalid as soon as a new field gets a sentinel.
+
+## Multi-Field Row Corruption (Rule 5, v1.1)
+
+When a single source row has corruption affecting **2+ fields simultaneously** (e.g., a column-shifted xlsx export where `sku` got an ASIN value, `asin` got an order_status value, `quantity` got a currency code, `currency` got a price, and `ship_state` got a postal code), the response is NOT to apply per-field `UNKNOWN_<ENTITY>` sentinels and retain the row.
+
+### Anti-pattern
+
+```r
+# WRONG — applying per-field sentinels to a column-shifted row
+df$asin[bad_row]            <- "UNKNOWN_ASIN"
+df$quantity[bad_row]        <- 0
+df$currency[bad_row]        <- "UNKNOWN_CURRENCY"
+df$ship_state[bad_row]      <- "UNKNOWN_STATE"
+df$ship_postal_code[bad_row] <- "UNKNOWN_POSTAL_CODE"
+# Row retained — but every other field is still in the wrong column.
+```
+
+The retained row's "untouched" fields (`order_id`, `purchase_date`, `order_status`, etc.) are still potentially corrupt because the column shift affected the entire row, not just the fields whose values fail format checks. Per-field sentinels mask row-level corruption.
+
+### Correct pattern (MP163-aligned)
+
+```r
+# RIGHT — drop the row, record to coverage audit
+bad_rows_df <- df[bad_row_mask, ]
+df         <- df[!bad_row_mask, ]
+
+# Surface to coverage audit (canonical naming: df_*_coverage_audit per MP163)
+audit <- data.frame(
+  source_file       = bad_rows_df$etl_source_file,
+  source_row_id     = bad_rows_df$source_row_id,
+  reason            = "column_shift_in_source",
+  detected_via      = "asin_format_check_failed",
+  representative_field_value = bad_rows_df$asin,
+  detected_at       = Sys.time()
+)
+dbWriteTable(con, "df_amz_sales_coverage_audit", audit, append = TRUE)
+```
+
+### Decision criterion
+
+| Failure scope | Mechanism |
+|---|---|
+| One field is missing or malformed; other fields in the row are valid | Per-field `UNKNOWN_<ENTITY>` sentinel — keep the row |
+| Multiple fields show signs of corruption / column shift / structural source defect | Drop the row, write to `df_*_coverage_audit` (MP163), surface to attention loop |
+
+### Why
+
+Per-field sentinel is a **field-level visible-gap marker**. Row-level corruption is a different problem with a different tool: a row-level visible-corruption marker (the audit table) that is queryable, surface-able, and does not pretend the rest of the row's fields are fine.
+
+This rule realizes MP163's "Surface-to-Attention Gaps" gate at the schema-authoring level: schema rules say what a field's sentinel means; rule 5 says when a row's failure is too large to fit in any single field's sentinel and must escalate to a row-level audit.
+
+## Sentinel Boundary Cases
+
+- **Empty string `""`**: acceptable when the field semantic is "optional, empty allowed" (e.g., `description.fallback.value = ""`). Distinct from `UNKNOWN_*` which signals "data missing where required".
+- **Numeric `0`**: acceptable for numeric fields where 0 is a meaningful sentinel (e.g., `price.fallback.value: 0` flagged for downstream). Document the choice in `notes:`.
+- **Date sentinel `"1970-01-01"`**: acceptable Unix-epoch sentinel for date-typed fields where `UNKNOWN_*` would type-error.
+- **Boolean `false`**: acceptable conservative default for `is_*` fields (e.g., `is_own_product.fallback.value: false`). Document in `notes:` why `false` is conservative.
+
+## Character Set Convention
+
+### Machine-read fields (ASCII only)
+
+- `coercion.rule`: e.g., `"as.numeric after stripping currency symbols"` — ASCII only
+- `pattern`: e.g., `"^B0[A-Z0-9]{8}$"` — regex, ASCII only
+- `fallback.derive`: e.g., `"unit_price * quantity when both present"` — ASCII only
+- `aliases:` list entries: ASCII when documenting English source-form; non-ASCII allowed only when documenting actual Chinese/Japanese source column names that bridge will encounter (e.g., `"產品編號"` is a real Gsheet column header, not a Chinese translation of `"product_id"`)
+
+### Human-read fields (UTF-8 allowed)
+
+- `description`: English description, ASCII preferred but not required
+- `description_zh`: 繁體中文描述，full-width punctuation `（）` allowed
+- `notes`: free-form, UTF-8 allowed for human readers
+- `# comments` (yaml comments): UTF-8 allowed
+
+### Forbidden across all fields
+
+- Emoji (`📊` `✓` `🔥` etc.) — even in `description_zh`
+- Control characters (tabs in middle of strings, BOM markers, etc.)
+- Half-width katakana, soft hyphens, zero-width joiners
+
+## Layer 1 Binding Header (Rule 8)
+
+Every schema authoring yaml SHALL begin with a normative header comment block:
+
+```yaml
+# ==============================================================================
+# core_schemas.yaml — Canonical Schema (MP157 Layer 1)
+# ==============================================================================
+# Bound by:
+#   - MP102 v1.2 (ETL Output Standardization, MP156 Tier-2 Schema Contract)
+#   - MP156    (Two-Tier Normativity, Category A — Schema Contract binding)
+#   - MP157    (Two-Layer YAML Authoring, Layer 1 = universal contract)
+#   - MP158    (Glue-Driven Raw Layer Extensibility, axes 1+2 Step 1 target)
+#   - MP159    (Glue Authoring Boundary Immutability, immutable during bridge authoring)
+#
+# Most recent significant edit: spectra change qef-product-master-redesign
+#   Phase 9 task 9.1 (thin master refactor for products datatype, 2026-04-28)
+#
+# Change discipline:
+#   - Edits trigger IC_P002 cross-company verification (QEF/D_RACING/MAMBA/WISER/kitchenMAMA)
+#   - Commit message must contain `Verified: schema change against 5 consuming companies` trailer
+#   - Edits during a /glue-bridge skill flow are forbidden (MP159) — abort and propose
+#     a separate Layer 1 change spec instead
+# ==============================================================================
+```
+
+The header is a contract: it tells reviewers what binding obligations the file is under, and it tells `glue-bridge` skill flow that this file is off-limits during bridge authoring.
+
+## `_meta_schema.yaml` Registration (Rule 9)
+
+Datatype-level and field-level keys SHALL be drawn from a registered set declared in `01_db/raw_schema/_authoring/_meta_schema.yaml`. `_build.R` validates each `core_schemas.yaml` and `platform_extensions/*.yaml` entry against this meta-schema before generating DDL.
+
+Allowed datatype-level keys (initial set, may grow with documented additions):
+
+```
+description, description_zh, table_pattern, version, physical_realization,
+view_source_pattern, required_fields, optional_fields
+```
+
+Allowed field-level keys:
+
+```
+type, required, description, description_zh, aliases, pattern, coercion,
+fallback, constraints, notes
+```
+
+Unknown keys halt the build with a clear error pointing at the offending key + nearest legal key (Levenshtein hint). Adding a new key to the meta-schema is a deliberate act and goes through its own change spec.
+
+## Files Bound
+
+This rule binds:
+
+- `shared/global_scripts/01_db/raw_schema/_authoring/core_schemas.yaml` — primary target
+- `shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/*.yaml` — same conventions apply
+- `shared/global_scripts/01_db/raw_schema/_authoring/bridges/{COMPANY}/{platform}/{source}.bridge.yaml` — field-name + sentinel conventions apply (bridge-specific keys like `value_map`, `from_columns`, `use_value` are Layer 2 keys not covered here)
+- `shared/global_scripts/01_db/raw_schema/_authoring/_meta_schema.yaml` — the registry itself
+- `shared/global_scripts/01_db/raw_schema/_build.R` — implements the meta-schema validation
+- `shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/validate_bridge_yaml.R` — implements the linter
+
+## Examples
+
+### Compliant: full thin master products datatype
+
+```yaml
+products:
+  description: "Thin master for product catalog data; physical impl is a VIEW"
+  description_zh: "產品目錄薄主表;實體實作是 VIEW"
+  table_pattern: "df_{platform}_products___raw"
+  version: "3.0"
+  physical_realization: "view"
+  view_source_pattern: "df_{platform}_product_attributes_*___raw"
+
+  required_fields:
+    product_id:               # ✓ snake_case lowercase ASCII
+      type: VARCHAR
+      required: true
+      pattern: "^[A-Za-z0-9._-]+$"          # ✓ ASCII regex
+      coercion:
+        rule: "as.character + trimws"       # ✓ ASCII
+      fallback:
+        rule: "sentinel"
+        value: "UNKNOWN_PRODUCT"            # ✓ UNKNOWN_<ENTITY>
+      description_zh: "標準產品識別碼"        # ✓ UTF-8 in description_zh
+```
+
+### Violating: scattered convention drift
+
+```yaml
+products:
+  required_fields:
+    productID:                                # ✗ camelCase field name
+      type: VARCHAR
+      pattern: "^[A-Za-z0-9._-]+$ 含全形（）"   # ✗ full-width in pattern
+      fallback:
+        value: "unknown"                      # ✗ lowercase sentinel
+      description: "📊 product identifier"   # ✗ emoji in description
+```
+
+## Linter Coverage
+
+The schema authoring linter SHALL include checks for:
+
+1. **Field name format**: every key under `required_fields` / `optional_fields` matches `^[a-z][a-z0-9_]*$`. CRITICAL on violation.
+2. **Sentinel format**: every `fallback.value` that is a non-empty string starting with `unknown`/`Unknown`/`UNKNOWN` matches `^UNKNOWN(_[A-Z][A-Z0-9_]*)?$`. CRITICAL on violation (catches the `"unknown"` lowercase case).
+3. **Sentinel ENTITY blacklist (v1.1)**: `<ENTITY>` part of `UNKNOWN_<ENTITY>` SHALL NOT match a small blacklist of known non-entity tokens: `BAD_ROW`, `SHIFTED_ROW`, `CORRUPT_ROW`, `MALFORMED`, `INVALID`, `BROKEN`, `TODO`, `PENDING`, `PRE_VALIDATION`, `POST_FIX`. WARNING on violation (advisory because semantic correctness of an entity name cannot be mechanically verified — this catches the most common non-entity mistakes). The full identification test (rule 3) is a code-review check, not a lint check.
+4. **ASCII in machine-read fields**: `coercion.rule`, `pattern`, `fallback.derive` are ASCII-only. WARNING on violation (not CRITICAL because real source columns may have non-ASCII names that bridge needs to map).
+5. **Header presence**: line 1-30 of the file contains a comment block referencing MP102 + MP157. WARNING on missing.
+6. **Meta-schema validation**: every datatype-level key and field-level key is registered in `_meta_schema.yaml`. CRITICAL on unknown key.
+
+## Migration Path
+
+For pre-existing convention drift:
+
+1. **Sentinel unification**: change every lowercase `"unknown"` to `UNKNOWN_<ENTITY>` based on the field's semantic (e.g., `import_source` → `UNKNOWN_SOURCE`). Single sweep commit per affected file.
+2. **Header insertion**: add the binding header to `core_schemas.yaml` and each `platform_extensions/*.yaml`. Reference the controlling change in the "Most recent significant edit" line.
+3. **Meta-schema setup**: enumerate currently-used datatype-level and field-level keys, write `_meta_schema.yaml`, run `_build.R` against current schemas to confirm zero unknown-key errors.
+
+For pre-existing field-name drift: most existing field names are already snake_case lowercase ASCII (verified by the linter). New violations are rejected at lint time.
+
+## References
+
+- spectra change `qef-product-master-redesign` Phase 9 Review Addendum (2026-04-28), design decision D14 Phase A
+- GitHub issue #492 (v1.0 rule proposal source)
+- GitHub issue #506 (v1.1 sentinel entity-naming amendment — surfaced while diagnosing #475 D_RACING amazon_sales column shift)
+- v1.0 trigger: Phase 9 review found `"unknown"` lowercase sentinel inconsistent with `UNKNOWN_<ENTITY>` pattern + no meta-schema for datatype-level keys + no Layer 1 binding header
+- v1.1 trigger: candidate sentinel `UNKNOWN_BAD_ROW` passed the v1.0 regex but described row meta-state instead of field semantics; rule needed explicit entity-naming semantics, granularity guidance, and multi-field row corruption escalation
+- MP100: UTF-8 Encoding Standard (general character rules — SO_R038 specializes for schema authoring)
+- DM_R065: Schema Dedup Discipline (companion rule for alias content; SO_R038 is for naming)
+- MP160: AI Schema/Bridge Authoring Completeness — companion principle. SO_R038 names the fields; MP160 ensures all fields are enumerated to be named. Together they guarantee schema authoring is both consistently-named and exhaustive.
+- MP163: Progressive Completeness — sister principle for the row-level escalation path (rule 5). SO_R038 governs field-level sentinel naming; MP163 governs the architectural pattern of dropping rows to coverage audit when row-level corruption exceeds field-level sentinel scope.
+
+## Version History
+
+| Version | Date | Change | Trigger |
+|---|---|---|---|
+| 1.0.0 | 2026-04-28 | Initial rule: 6 sub-rules covering field names, sentinel format, character sets, header, meta-schema | qef-product-master-redesign Phase 9 Review (#492) |
+| 1.1.0 | 2026-05-02 | Added rule 3 (entity-naming semantics) + rule 4 (granularity guidance) + rule 5 (multi-field row corruption); added linter check 3 (entity blacklist); existing rules renumbered 6-9 | issue #506 — diagnosing #475 surfaced semantic gap in v1.0 |

@@ -1,0 +1,222 @@
+---
+title: "DEV_R057: Session-Start Toolchain Readiness Verification"
+subtitle: "R session SHALL verify R version + core packages at start; AI SHALL install missing not workaround"
+chapter: "CH03"
+category: "rule"
+number: "DEV_R057"
+date-created: "2026-05-02"
+date-modified: "2026-05-02"
+author: "Claude (spectra change dev-r057-session-start-toolchain-readiness, GitHub issue #507)"
+type: "rule"
+law: "Development Methodology"
+article-number: "Rule 57"
+parent_principle: "MP029"
+related_to:
+  - "MP029": "No Fake Information (sibling — DEV_R057 extends 'never assume; verify before acting' to the environment dimension)"
+  - "DM_R023": "Universal DBI Approach (DEV_R057 prevents `dbReadTable + R-side filter` workarounds when `dbplyr` is missing)"
+  - "DEV_R056": "Project Primary Language R First (sister — DEV_R056 says 'use R'; DEV_R057 says 'and the R env must be ready before you do')"
+  - "DM_R063": "Deploy Bundle Purity (sibling — both gate APP_MODE behavior to keep deploy clean; DEV_R057 explicitly skips APP_MODE)"
+  - "DOC_R009": "Triple-Layer Sync (this rule itself follows DOC_R009: .qmd → llm/yaml → .claude/rules/)"
+  - "IC_P002": "Cross-Company Verification (canonical core / optional list changes trigger 5-co verify + Verified: trailer)"
+binds:
+  - "shared/global_scripts/00_principles/docs/en/part1_principles/CH03_development_methodology/rules/DEV_R057_session_start_toolchain_readiness.qmd"
+  - "shared/global_scripts/00_principles/llm/CH03_development.yaml"
+  - "shared/global_scripts/00_principles/.claude/rules/01-always.md"
+  - "shared/global_scripts/00_principles/.claude/rules/11-session-readiness.md"
+  - "shared/global_scripts/04_utils/fn_check_session_packages.R"
+  - "shared/global_scripts/98_test/check_packages.R"
+  - "shared/global_scripts/22_initializations/sc_Rprofile.R"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+---
+
+# DEV_R057: Session-Start Toolchain Readiness Verification {#overview}
+
+## Core Statement
+
+Every R session that runs in `UPDATE_MODE` or `GLOBAL_MODE` SHALL verify at session start that (1) R version meets the project minimum **R 4.4.0**, (2) every package in the canonical `core` list is installed, and (3) packages in the canonical `optional` list are reported via `warning()` if absent. Verification failure SHALL produce an actionable error message containing the exact `install.packages(...)` remedy.
+
+`APP_MODE` sessions (Posit Connect / shinyapps deploy targets) SHALL NOT execute this check. Deploy environments manage their toolchain via `manifest.json`.
+
+When the check fails, AI agents SHALL execute the `install.packages(...)` remedy and retry. They SHALL NOT rewrite the calling R code to substitute non-canonical alternatives (e.g., replacing `tbl2() + dplyr` with `dbReadTable() + R-side filter` because `dbplyr` is missing).
+
+## Why This Rule Exists
+
+This rule was triggered by GitHub issue #507 (2026-05-02). During the fix for issue #475 (D_RACING amazon_sales column shift), an AI agent — me — wrote `/tmp/test_475_integration.R` using `tbl2() %>% filter() %>% summarise(n())` (the canonical pattern from DM_R023). When `library(dbplyr)` failed with "there is no package called 'dbplyr'", the AI's instinct was to rewrite the test using `dbReadTable() + R-side filter` — a workaround that violates DM_R023's spirit.
+
+The user pointed out: "I have a command that installs packages — theoretically you shouldn't have hit this." Investigation revealed three gaps:
+
+- **Gap A** — `shared/global_scripts/98_test/check_packages.R` existed but its `required` list was stagnant (8 packages, missing `data.table` / `dbplyr` / `readxl` / `yaml` / `lubridate` and others)
+- **Gap B** — No principle / rule mandated running the check at session start. AI agents and human contributors didn't know it existed.
+- **Gap C** — Ad-hoc `Rscript /tmp/foo.R` invocations completely bypass `autoinit()` (the `get_mode()` function in `sc_Rprofile.R` resolves mode by checking whether `update_scripts` / `global_scripts` is in the path; `/tmp/` doesn't match)
+
+DEV_R057 closes all three: a refreshed canonical list (Gap A), a normative principle (Gap B), and AI-facing rules in `.claude/rules/11-session-readiness.md` covering the ad-hoc path (Gap C).
+
+The cost asymmetry justifies the rule: each AI session that hits a missing package and chooses workaround over install adds a non-canonical data access path that erodes DM_R023. DEV_R057 preempts this entire failure class.
+
+## Mode-Gated Behavior
+
+| Mode | Behavior |
+|------|----------|
+| `UPDATE_MODE` (ETL pipeline run, Makefile / `Rscript update_scripts/...`) | `autoinit()` SHALL run the check; missing core SHALL fail-fast with `stop()` |
+| `GLOBAL_MODE` (dev work / scripts under `global_scripts/`) | Same as `UPDATE_MODE` |
+| `APP_MODE` (Shiny app run by Posit Connect / shinyapps / local Shiny session) | `autoinit()` SHALL NOT run the check |
+
+The mode-gating aligns with **DM_R063 Deploy Bundle Purity**: APP_MODE deploy paths must remain free of pre-flight checks that increase startup latency or risk pre-startup failure on hosted infrastructure.
+
+## Canonical Lists
+
+The single source of truth for `core` and `optional` package lists is `shared/global_scripts/04_utils/fn_check_session_packages.R`, exposed via two accessor functions:
+
+- `check_session_core_packages()` — returns the canonical core vector (currently 15 packages)
+- `check_session_optional_packages()` — returns the canonical optional vector (currently 9 packages)
+
+The CLI wrapper (`98_test/check_packages.R`) and `autoinit()` SHALL source the helper rather than duplicating the lists. Documentation in this `.qmd` and in `.claude/rules/11-session-readiness.md` MAY enumerate the lists illustratively but SHALL clearly mark `fn_check_session_packages.R` as the source of truth.
+
+### Core Set (MUST — fail-fast on missing)
+
+```
+data.table, dplyr, dbplyr, tidyr, purrr,           # data manipulation
+DBI, duckdb, RPostgres,                              # database
+readxl, readr, yaml, jsonlite,                       # file / config
+lubridate, stringr,                                  # time / locale / text
+here                                                  # path / project
+```
+
+### Optional Set (SHOULD — warn-only)
+
+```
+testthat, shinytest2,                                # testing infrastructure
+lintr,                                               # quality tools
+broom, zoo, knitr,                                   # stats utilities
+googlesheets4,                                       # external integration
+httr2, openssl                                       # HTTP / OpenAI
+```
+
+Adding or removing entries from either canonical list triggers **IC_P002 cross-company verification** across all 5 consuming companies (QEF_DESIGN / D_RACING / MAMBA / WISER / kitchenMAMA), and the commit message SHALL include a `Verified:` trailer listing the 5 companies.
+
+## Actionable Error Format
+
+When the check fails, the error SHALL follow exact patterns the user (or AI agent) can copy-paste into a fresh R session.
+
+### Missing core packages
+
+```
+Session-start toolchain readiness check failed:
+  Missing core packages: dbplyr, yaml
+  Remedy: install.packages(c('dbplyr', 'yaml'))
+  See DEV_R057 for details.
+```
+
+### R version too old
+
+```
+Session-start R version assertion failed:
+  Running: R 4.3.2
+  Required: R 4.4.0 or higher
+  Remedy: upgrade R via the macOS installer at https://cran.r-project.org/
+  See DEV_R057 for details.
+```
+
+The "DEV_R057" reference at the end is intentional — it gives the user a single token to search if they want the full normative text.
+
+## AI Agent Mandate
+
+When an AI agent (Claude, Codex, or any future agent) authors or executes R code in a fresh session:
+
+1. The agent SHALL invoke `Rscript shared/global_scripts/98_test/check_packages.R` (or equivalent direct call to `check_session_packages()`) as its **first R-touching action**.
+2. If the check reports missing core packages, the agent SHALL execute the `install.packages(c(...))` remedy and retry.
+3. The agent SHALL NOT rewrite the calling R code to avoid the missing package.
+
+The full AI-facing checklist — including ad-hoc `/tmp/*.R` script handling (Gap C) — lives in `shared/global_scripts/00_principles/.claude/rules/11-session-readiness.md`.
+
+### Anti-Pattern (Prohibited)
+
+```r
+library(dbplyr)
+# Error: there is no package called 'dbplyr'
+# AI rewrites the script to use dbReadTable + R-side filter -> WRONG
+df <- DBI::dbReadTable(con, "df_amazon_sales")
+df_clean <- df[df$asin != "Shipped", ]
+```
+
+This violates DM_R023 (universal data access via tbl2 + dplyr) and DEV_R057 simultaneously. The rewrite masks the real problem (missing package) by introducing a parallel data access path the codebase does not endorse.
+
+### Compliant Pattern
+
+```r
+library(dbplyr)
+# Error: there is no package called 'dbplyr'
+# AI installs the missing package and retries -> RIGHT
+install.packages("dbplyr")
+library(dbplyr)
+df_clean <- tbl2(con, "df_amazon_sales") %>%
+  filter(asin != "Shipped") %>%
+  collect()
+```
+
+## Files Bound
+
+This rule binds:
+
+- `shared/global_scripts/04_utils/fn_check_session_packages.R` — the helper function (single source of truth for core / optional lists, R version assertion, and structured-result contract)
+- `shared/global_scripts/98_test/check_packages.R` — CLI wrapper (thin script sourcing the helper; provides `Rscript ...` UX)
+- `shared/global_scripts/22_initializations/sc_Rprofile.R` — `autoinit()` hook (sources helper + invokes check; gated to UPDATE_MODE / GLOBAL_MODE)
+- `shared/global_scripts/00_principles/.claude/rules/11-session-readiness.md` — AI-facing checklist (Layer 3 quick reference)
+- `shared/global_scripts/00_principles/llm/CH03_development.yaml` — Layer 2 LLM index entry
+- `shared/global_scripts/00_principles/.claude/rules/01-always.md` — top-level "關鍵原則" reference (one-line summary)
+
+## Non-Goals (defer to separate work)
+
+DEV_R057 explicitly does NOT include:
+
+- **`renv` adoption** — DEV_R057 uses lightweight `install.packages()` on demand. Lockfile-pinned environments (5 lockfiles to sync across consuming companies) is a deferred concern, tracked separately as proposed DEV_R058 / a follow-up issue. If cross-version segfault recurs after this rule lands, that is the escalation path.
+- **Per-company package overrides** — A company-local `local_pkgs` mechanism (e.g., MAMBA-only `survival` requirement) is not in scope. Surface during Phase 2 rollout if real cases emerge.
+- **Mechanical attempt to hook ad-hoc `/tmp/*.R`** — `get_mode()` cannot detect those paths. Coverage is by AI-facing rule (`.claude/rules/11-session-readiness.md`) and human-facing README guidance, not by code.
+
+## Rationale (Trade-offs)
+
+The trade-off is **cognitive overhead vs environment consistency**. Each session pays a small cost: AI agents recall to run the check, humans see one extra fail-fast line during onboarding, and `autoinit()` adds ~1ms (median) to startup. In exchange, the project gains:
+
+- AI agents can no longer silently introduce non-canonical data access paths because of missing packages
+- Cross-version binary mixing (the original #475 segfault) becomes an actionable, named failure rather than a mystery crash
+- New contributors get a single command (`Rscript .../check_packages.R`) that surfaces the entire onboarding install list at once
+
+The trade-off is heavily favored toward enforcement: even a single saved workaround (an AI session that doesn't write `dbReadTable + R-side filter` because `install.packages('dbplyr')` happened first) repays the rule's authoring cost.
+
+The choice of **R 4.4.0** as minimum (rather than CLAUDE.md's stated 4.0) is a deliberate hardening: the project's currently-bundled `data.table` / `dplyr` binaries do not run reliably on R 4.0-4.3, and the original #475 segfault was a 4.5/4.6 binary mixing issue. Adopting 4.4.0 turns the implicit binary-compatibility constraint into an explicit, named gate.
+
+## Rollback Strategy
+
+If the autoinit hook produces unexpected production blockage (e.g., CRAN connectivity failure during deploy):
+
+- **Hot-fix (preserves the rule)**: introduce `Sys.getenv("SKIP_PKG_CHECK")` escape hatch in `autoinit()`. Ops can set the env var to bypass the check on hot paths.
+- **Cold-fix (suspends the rule)**: revert the `autoinit()` block but keep the helper function and CLI wrapper. The check becomes a manual tool. Re-enable after the underlying issue is fixed.
+
+Both paths preserve `fn_check_session_packages.R` and the canonical lists — DEV_R057 stays a useful manual guard even if its automatic enforcement is suspended.
+
+## Migration Phases
+
+1. **Phase 1 (this change)** — Land helper, CLI wrapper, autoinit hook, three-layer principle sync. IC_P002 cross-company verification across 5 companies.
+2. **Phase 2 (post-apply rollout)** — Each company's first ETL run after merge surfaces missing packages → install. Observe 1-2 weeks; if any consumer surfaces a missing package not in the canonical core list, decide whether to add it (re-run cross-co verify) or treat it as company-local.
+3. **Phase 3 (separate change, future)** — Evaluate `renv` adoption once Phase 2 stabilizes. Tracked separately as proposed DEV_R058.
+
+## References
+
+- **GitHub issue #507** — proposal source (2026-05-02)
+- **GitHub issue #475** — trigger event (D_RACING amazon_sales column shift, the AI workaround that exposed the gap)
+- **DM_R023 v1.2** — Universal DBI Approach (the canonical pattern that DEV_R057 protects from workaround erosion)
+- **DEV_R056** — Project Primary Language R First (sister rule — DEV_R056 says "use R"; DEV_R057 says "and your R must be ready")
+- **DM_R063** — Deploy Bundle Purity (sibling rule — both protect APP_MODE deploy from pre-flight overhead)
+- **MP029** — Never assume; verify before acting (parent principle — DEV_R057 extends to environment dimension)
+- **DOC_R009** — Triple-Layer Sync (this rule itself follows DOC_R009)
+- **IC_P002** — Cross-Company Verification (canonical list changes trigger this protocol)
+
+## Version History
+
+| Version | Date | Trigger | Change |
+|---------|------|---------|--------|
+| 1.0.0 | 2026-05-02 | spectra change `dev-r057-session-start-toolchain-readiness` (issue #507) | Initial: 6 design decisions, helper fn, CLI wrapper, autoinit hook, AI rule, IC_P002 cross-co verify |

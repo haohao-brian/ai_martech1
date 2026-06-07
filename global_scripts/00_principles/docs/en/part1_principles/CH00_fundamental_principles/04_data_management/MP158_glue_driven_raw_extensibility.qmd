@@ -1,0 +1,271 @@
+---
+id: "MP158"
+title: "Glue-Driven Raw Layer Extensibility"
+type: "meta-principle"
+category: "data_management"
+date_created: "2026-04-28"
+date_modified: "2026-04-28"
+author: "Claude (qef-product-master-redesign Phase 9 spectra-ask conversation, post-#489 + post-MP157)"
+status: "active"
+version: "1.0"
+weight: 158
+related_to:
+  - "MP102": "ETL Output Standardization (canonical schema layer this principle extends)"
+  - "MP157": "Two-Layer YAML Authoring (static layering this principle composes for growth)"
+  - "MP156": "Two-Tier Normativity (binding mechanism for new bound files added during growth)"
+  - "MP064": "ETL/DRV separation"
+  - "MP155": "Minimize Human Input"
+  - "DM_R028": "ETL Data Type Separation (table naming convention applied during growth)"
+implements:
+  - "EXTENSIBILITY": "Open-ended growth pattern for canonical raw layer"
+  - "COMPOSITION": "Schema + DDL codegen + bridge yamls compose into new rawdata tables"
+---
+
+# MP158: Glue-Driven Raw Layer Extensibility Principle
+
+## Core Statement
+
+**New canonical raw tables SHALL be added by composing yaml-driven steps** — schema enrichment + DDL codegen + per-company bridge yamls — **never by writing per-table custom ETL R code**. The architecture supports indefinite growth of canonical raw tables without per-addition engineering effort scaling beyond yaml authoring.
+
+A new canonical raw table is "born" once its canonical schema yaml entry exists, its generated DDL is committed, and at least one bridge yaml writes data into it. After that, additional sources from additional companies are added by writing additional bridge yamls — no schema re-design, no DDL re-engineering, no R-code-per-source duplication.
+
+## The 3-Step Growth Pattern
+
+To add a new canonical raw table for a new datatype / new platform / new source, the operational sequence is fixed and small:
+
+```
+Step 1 — Layer 1 (Canonical Schema)             ← MP157 Layer 1, MP102 binding
+─────────────────────────────────────────────────────────────────────────
+Edit shared/global_scripts/01_db/raw_schema/_authoring/core_schemas.yaml
+  + add a new top-level datatype section (or enrich an existing one)
+  + describe required_fields with type / pattern / aliases / fallback / coercion
+  + cross-co verify (IC_P002): does this datatype apply to ≥ 2 companies?
+
+(Optional) Edit platform_extensions/{platform}_extensions.yaml
+  + add platform-specific fields under the new datatype
+
+Step 2 — DDL Codegen                              ← MP102 Change Discipline #3
+─────────────────────────────────────────────────────────────────────────
+Run: Rscript shared/global_scripts/01_db/raw_schema/_build.R
+  + produces _generated/core/{datatype}.sql + _generated/platforms/{p}/{datatype}.sql
+  + commit the generated SQL artifacts (codegen output is git-tracked)
+  + reproducibility test: rerun against unchanged _authoring/ → byte-identical
+
+Step 3 — Layer 2 (Bridge YAML per company × source)   ← MP157 Layer 2
+─────────────────────────────────────────────────────────────────────────
+For each (company, platform, source) tuple that should populate the new table:
+  + write/generate (via /glue-bridge skill) one bridge yaml at:
+    01_db/raw_schema/_authoring/bridges/{COMPANY}/{platform}/{source}.bridge.yaml
+  + bridge declares prerawdata_source (URI/sheet) + canonical_target (datatype)
+    + column_mapping + value_map + use_value + pre_filter + reviewed_by
+  + run the bridge via fn_glue_bridge() — populates df_{platform}_{datatype}___raw
+```
+
+**That's it.** No new ETL `*_0IM.R` script. No new arbitration logic. No new resolver function. The table exists at the moment Step 2 generates the DDL; the table starts having data at the moment Step 3's first bridge runs; the table grows in coverage as more bridges are added across companies × sources.
+
+## What "Extensibility" Means in Practice
+
+Three independent axes of growth, all served by the same 3-step pattern:
+
+### Axis 1: New datatype
+A canonical raw table type that doesn't exist yet (e.g., `warranty`, `subscription`, `inventory`).
+
+- Step 1: add `warranty:` top-level section to `core_schemas.yaml`
+- Step 2: `_build.R` produces `_generated/core/warranty.sql` + `_generated/platforms/*/warranty.sql`
+- Step 3: bridges per company × platform that have a warranty source
+
+### Axis 2: New platform
+A new sales / acquisition platform (e.g., `tkk` for TikTok Shop, `lzd` for Lazada).
+
+- Step 1: add `platform_extensions/tkk_extensions.yaml` with platform-specific fields per datatype
+- Step 2: `_build.R` produces `_generated/platforms/tkk/{sales,customers,...}.sql`
+- Step 3: bridges per company × tkk × datatype
+
+### Axis 3: New company
+A new consuming company onboarding (e.g., 6th company adopting the framework).
+
+- Step 1: NO schema change required (canonical schema is already universal)
+- Step 2: NO codegen change required (`_generated/*.sql` is already universal)
+- Step 3: write bridges for the new company at `bridges/{NEW_COMPANY}/{platform}/{source}.bridge.yaml` per source they have
+
+The asymmetry between Axis 3 (company) and Axes 1-2 (datatype / platform) is intentional and important: company-level growth is **pure Layer 2 work**. Adding the 6th, 7th, ... 20th company costs only Step 3 work per company. The canonical schema doesn't budge.
+
+## Operational Cost Curve
+
+Compare this principle's cost model vs the pre-glue-layer (pre-#489) per-table custom-ETL model:
+
+| Task | Pre-#489 model | MP158 (post-#489) model |
+|---|---|---|
+| Add new datatype across 5 companies | 5 × custom `*_ETL_*_0IM.R` scripts (1 per company) + 5 × ETL test fixtures + per-co debugging | 1 schema yaml edit + 1 codegen run + 5 bridge yamls (LLM-drafted via /glue-bridge skill) |
+| Add new platform across 5 companies | 5 × N datatypes × custom ETL = up to 25 scripts per platform | 1 platform_extensions yaml + 5 × N bridges (where N is the number of datatypes the platform actually has data for) |
+| Add 6th company across all existing datatypes | 6th company's ETL stack from scratch (often days-weeks per company) | Bridges per source the new company has (hours per bridge with skill assist) |
+| Schema correction propagation | Track down every `*_ETL_*_0IM.R` script that hardcodes the old shape; per-company patch | Edit `core_schemas.yaml`; rerun `_build.R`; DDL re-validates; bridge yamls already declare contract — drift detection fires if any bridge is misaligned |
+| Audit: who maps `customer_email`? | Grep 5 × N R scripts, hope no script does it inline | One-line query: `find _authoring/bridges -name '*.yaml' \| xargs grep customer_email` |
+
+The cost-per-addition is **bounded** — bridge yamls are O(50-200 lines), schema edits are O(10-30 lines), codegen is automated, drift detection is automated. The pre-#489 cost-per-addition was **unbounded** — each new ETL script could grow to thousands of lines and accrete per-company quirks.
+
+## Constraints (What MP158 Does NOT Permit)
+
+The extensibility this principle promises is real, but NOT unconstrained. The composition rules below are load-bearing:
+
+### Constraint 1: New bound files inherit MP102 + MP156
+
+Every yaml file added under `_authoring/` (schema or bridge) becomes a **Tier-2 spec** the moment it is committed, per MP156 binding. New schema yamls inherit MP102's Change Discipline (DOC_R009 triple-layer sync + IC_P002 cross-company verify). New bridge yamls inherit MP102 + MP157 ownership rules. **Adding a yaml is not a free action** — it brings binding obligations.
+
+### Constraint 2: MP157 anti-patterns still apply during growth
+
+When growing the system, the same Layer 1 vs Layer 2 ownership rules apply:
+- Per-instance facts (URIs, per-company constants) → bridge yaml (Layer 2)
+- Universal contract (types, patterns, required fields) → schema yaml (Layer 1)
+
+A common anti-pattern during growth: when a new company onboards, the temptation is to add per-company conditional fields to the schema. **No** — write a bridge yaml.
+
+### Constraint 3: DDL codegen invariance is non-negotiable
+
+`_build.R` SHALL remain reproducible (byte-identical re-run output against unchanged `_authoring/`). Any growth that introduces non-determinism into codegen — e.g., reading `Sys.time()` into a generated SQL comment, or reading machine-specific paths — breaks MP102 Change Discipline #3 and is rejected.
+
+### Constraint 4: `df_` prefix + `___raw` suffix naming is canonical
+
+Per **DM_R028**: every canonical raw table is `df_{platform}_{datatype}___raw`. Growth that invents a different naming scheme (e.g., `customer_table` instead of `df_amz_customers___raw`) violates this and breaks downstream pipelines that grep for the canonical pattern.
+
+### Constraint 5: Drift detection MUST be wired for every bridge
+
+When adding a bridge yaml, its `prerawdata_source.schema_fingerprint` MUST be computed against the ACTUAL source (per Phase 5 PoC lesson — full file read, not truncated sample). A bridge yaml committed with a stale or fabricated fingerprint silently disables drift detection for that source. The `/glue-bridge` skill enforces this as part of its workflow; manual bridge authoring SHALL also enforce it.
+
+## Anti-Patterns
+
+### A-1: Adding a new datatype via custom R code instead of yaml
+
+```r
+# ❌ ANTI-PATTERN
+# shared/update_scripts/ETL/amz/amz_ETL_warranty_0IM.R
+import_warranty <- function() {
+  con <- dbConnectDuckdb(db_paths$raw_data)
+  data <- read_excel("warranty.xlsx")
+  # manual column rename + type coercion + dedup ...
+  dbWriteTable(con, "df_amz_warranty___raw", data, overwrite = TRUE)
+}
+```
+
+Problem: this skips Step 1 (no canonical schema entry) and Step 2 (no DDL codegen). The table exists with no contract — downstream consumers must read source code to discover its shape.
+
+**Fix**: add `warranty:` to `core_schemas.yaml`, run `_build.R`, write `bridges/{COMPANY}/amz/warranty.bridge.yaml`.
+
+### A-2: Per-company schema yaml fork
+
+```yaml
+# ❌ ANTI-PATTERN
+# 01_db/raw_schema/_authoring/qef_specific_schemas.yaml
+sales:
+  required_fields:
+    qef_special_field:
+      type: VARCHAR
+      required: true
+```
+
+Problem: forks the canonical schema per company. Defeats the universality that makes Axis 3 (new company) cheap.
+
+**Fix**: per-company facts go in bridge yaml. If the field is genuinely new and universal, add it to `core_schemas.yaml` with cross-company verification.
+
+### A-3: Skipping DDL codegen ("we'll write the CREATE TABLE by hand")
+
+Problem: hand-written DDL drifts from yaml schema; reproducibility test fails; bridge fingerprint expectations diverge from actual table shape.
+
+**Fix**: always run `_build.R` after schema edits. Commit the generated SQL.
+
+### A-4: Bridge yaml without fingerprint or with fabricated fingerprint
+
+```yaml
+# ❌ ANTI-PATTERN
+prerawdata_source:
+  schema_fingerprint:
+    algorithm: "sha256"
+    value: "TODO"  # or any placeholder, or copied from another bridge
+```
+
+Problem: drift detection silently disabled. Source schema could change without anyone noticing.
+
+**Fix**: compute fingerprint via `hash_prerawdata_schema()` against the actual full source. The /glue-bridge skill does this automatically.
+
+### A-5: Treating bridge yaml as throw-away migration script
+
+Problem: assumption that bridges are "just for the first load" and will be replaced by something else later. This rationalizes skipping `reviewed_by:` accountability, skipping fingerprint, skipping `ignored_columns` documentation.
+
+**Fix**: bridge yamls are permanent runtime config (per #489 architecture), bound by MP102, audit-relevant. Treat each bridge with the same authoring discipline as canonical schema.
+
+## Concrete Growth Examples
+
+### Example 1: Adding "warranty" datatype (new datatype axis)
+
+```
+Step 1 (Layer 1):
+  edit core_schemas.yaml:
+    + add `warranty:` section with required_fields:
+      warranty_id, product_id, customer_id, warranty_start_date,
+      warranty_end_date, warranty_terms, ETL metadata
+    + reuse aliases / pattern / fallback patterns from sales section
+  cross-co verify: do all 5 consuming companies have warranty data? if no,
+    consider whether warranty is universal or platform-specific
+
+Step 2 (DDL codegen):
+  Rscript .../01_db/raw_schema/_build.R
+  → _generated/core/warranty.sql appears
+  → _generated/platforms/{cbz,eby,amz,shp,official_website}/warranty.sql
+    appear (one per platform that has its extension yaml's warranty section)
+  commit the artifact
+
+Step 3 (Layer 2):
+  for each (company, platform) that has warranty data:
+    write or generate bridge yaml:
+    bridges/{COMPANY}/{platform}/warranty.bridge.yaml
+  run via fn_glue_bridge()
+  table df_{platform}_warranty___raw populates per company source
+```
+
+Total engineering cost: 1 schema edit, 1 codegen run, N bridge yamls (where N = number of company × platform combinations that actually have warranty sources). NO custom R scripts.
+
+### Example 2: Adding TikTok Shop platform (new platform axis)
+
+```
+Step 1 (Layer 1):
+  create platform_extensions/tkk_extensions.yaml with platform-specific
+    fields per existing datatype (sales, customers, products, ...)
+
+Step 2 (DDL codegen):
+  Rscript _build.R
+  → _generated/platforms/tkk/{sales,customers,products,reviews}.sql
+
+Step 3 (Layer 2):
+  for each company that sells on TikTok Shop:
+    write bridges/{COMPANY}/tkk/{datatype}.bridge.yaml per datatype
+```
+
+### Example 3: Onboarding 6th consuming company (new company axis)
+
+```
+Step 1 (Layer 1): NO change. Canonical schema is already universal.
+Step 2 (DDL codegen): NO change.  _generated/*.sql already covers the
+                      platforms the new company uses.
+Step 3 (Layer 2):
+  for each (platform, datatype, source) the new company has data for:
+    write bridge yaml at bridges/{NEW_COMPANY}/{platform}/{source}.bridge.yaml
+  no other engineering required
+```
+
+## Relationship to Other Principles
+
+- **MP102**: this principle's Step 1-2 (schema yaml + codegen) is exactly MP102's Tier-2 binding workflow. MP158 names the workflow "growth" and articulates that it's repeatable.
+- **MP156**: every yaml file added during growth becomes Tier-2 normative the moment it is committed. New bridge yamls inherit Category A — Schema Contract obligations.
+- **MP157**: Step 1 vs Step 3 mirror MP157's Layer 1 vs Layer 2 separation. MP158 is "MP157 applied repeatedly over time".
+- **MP155** (Minimize Human Input): bridge `column_mapping` declarations follow MP155's 4-question framework (input vs view vs action vs derived) per-source.
+- **MP064** (ETL/DRV separation): MP158's growth happens entirely at the raw layer (between prerawdata and raw). DRV consumers query raw tables; they don't see growth events except as new tables appearing.
+- **DM_R028** (ETL Data Type Separation): canonical naming `df_{platform}_{datatype}___raw` is invariant during growth.
+- **DOC_R009**: applies to MP158 itself (this principle ships across .qmd + llm/yaml + .claude/rules) AND to schema changes during growth that alter principle semantics.
+- **MP160** (AI Schema/Bridge Authoring Completeness): MP158 defines the 3-step extensibility pattern; MP160 hardens Step 1 to mean "FULLY add", not "scaffold and iterate". Without MP160, Step 1 may produce a TODO-laden schema whose downstream Step 3 bridges then have to discover fields ad-hoc — defeating the bounded-cost guarantee.
+- **MP161** (Company-Scoped Schema Recognition): strengthens MP158's axis-3 (new company onboarding) bounded-cost guarantee by classifying schemas. Universal schemas mean axis-3 onboarding only adds Layer 2 bridge; company-scoped schemas mean axis-3 also adds a Layer 1 entry under `_authoring/companies/{NEW_COMPANY}/`. The classification at authoring time tells the onboarding cost.
+
+## Conclusion
+
+The glue-layer architecture (#489) plus the two-layer yaml authoring discipline (MP157) together produce a system that grows by composition rather than by per-addition engineering. Adding a new datatype, a new platform, or a new company has bounded cost — measured in yaml lines, not in scripts. The canonical raw layer is therefore an open-ended container, expected to grow indefinitely as the framework onboards new domains.
+
+When in doubt about whether a piece of work belongs to this principle's growth pattern or warrants a special-case escape: ask **"would I be willing to repeat this work for the 6th, 7th, 12th company?"** If yes, you're following MP158. If no, you're probably writing custom code that should have been a bridge yaml.

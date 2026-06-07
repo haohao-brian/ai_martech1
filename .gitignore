@@ -1,0 +1,20 @@
+.DS_Store
+.Rhistory
+.Rproj.user/
+ai_martech/
+l1_basic/
+l4_enterprise/
+l9_projects/
+
+# Large data files (GitHub 100MB limit + privacy)
+archive/l3_enterprise/MAMBA/data/local_data/rawdata_MAMBA/product_feedbacks.csv
+*.csv
+*.parquet
+*.rds
+*.RData
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key

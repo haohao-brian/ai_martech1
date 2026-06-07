@@ -1,0 +1,199 @@
+---
+id: "MP159"
+title: "Glue Authoring Boundary Immutability"
+type: "meta-principle"
+category: "data_management"
+date_created: "2026-04-28"
+date_modified: "2026-04-28"
+author: "Claude (spectra change qef-product-master-redesign Phase 9 Review Addendum, D12)"
+status: "active"
+version: "1.0"
+weight: 159
+related_to:
+  - "MP157": "Two-Layer YAML Authoring (Layer 1 immutability is MP157's implicit precondition; this principle makes it explicit)"
+  - "MP158": "Glue-Driven Raw Layer Extensibility (axis 3 bounded-cost guarantee depends on Layer 1 stability)"
+  - "MP156": "Two-Tier Normativity (Tier-2 binding-discipline already requires structured changes; this rule prevents undisciplined edits during a different task)"
+  - "MP102": "ETL Output Standardization (the schema files this rule protects)"
+  - "IC_P002": "Cross-Company Verification (the cost paid when Layer 1 changes — and the cost MP159 prevents from being paid silently)"
+  - "DM_R065": "Schema Dedup Discipline (handles per-source idiosyncrasies in Layer 2, the safety valve MP159 leaves open)"
+implements:
+  - "BOUNDARY": "Layer 1 vs Layer 2 mutation boundary"
+  - "IMMUTABILITY": "Schema yaml stability during bridge authoring"
+binds:
+  - "shared/global_scripts/01_db/raw_schema/_authoring/core_schemas.yaml"
+  - "shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/*.yaml"
+  - "shared/global_scripts/01_db/raw_schema/_authoring/bridges/{COMPANY}/{platform}/{source}.bridge.yaml"
+---
+
+# MP159: Glue Authoring Boundary Immutability
+
+## Core Statement
+
+**Bridge yaml authoring sessions SHALL NOT modify Layer 1 canonical schema files.** When a prerawdata source cannot be cleanly mapped to the canonical contract, the un-mappable parts SHALL be recorded inside the bridge yaml using the existing primitives (`ignored_columns`, `apply_fallback`, `value_map`, `pre_filter`, `from_columns + merge_strategy`). The canonical schema is treated as immutable for the duration of any bridge authoring session.
+
+A "bridge authoring session" is defined as: any task whose stated intent is to write or update a `bridges/{COMPANY}/{platform}/{source}.bridge.yaml` file, including invocations of the `glue-bridge` skill.
+
+## Architectural Definition
+
+### What Layer 1 owns (immutable during bridge authoring)
+
+```
+shared/global_scripts/01_db/raw_schema/_authoring/
+  ├── core_schemas.yaml                  ← Layer 1 universal contract
+  └── platform_extensions/
+        ├── amz_extensions.yaml          ← Layer 1 platform extension
+        ├── eby_extensions.yaml
+        ├── cbz_extensions.yaml
+        ├── shp_extensions.yaml
+        └── official_website_extensions.yaml
+```
+
+These files declare the universal-vs-platform-extension partition. They are bound by MP102 v1.2 (Schema Contract, MP156 Tier-2). Their edits trigger IC_P002 cross-company verification across all 5 consuming companies.
+
+### What Layer 2 owns (the only mutation surface during bridge authoring)
+
+```
+shared/global_scripts/01_db/raw_schema/_authoring/bridges/
+  └── {COMPANY}/                         ← Per-company namespace
+        └── {platform}/                  ← Per-platform namespace
+              └── {source}.bridge.yaml   ← Per-source bridge
+```
+
+Bridge yamls own per-instance translation: `prerawdata_source.{company, platform, source_uri, sheet_name, schema_fingerprint}`, `column_mapping`, `value_map`, `use_value`, `pre_filter`, `from_columns + merge_strategy`, `ignored_columns`, `reviewed_by`.
+
+## Decision Rule
+
+When authoring a bridge yaml and you encounter an un-mappable situation, ask: "**is this a fact about THIS source, or about ALL canonical sources of this datatype?**"
+
+| If the un-mappable fact is | Mutation goes in | Allowed during bridge authoring? |
+|---|---|---|
+| Per-source (this company / this platform / this file format) | Bridge yaml | YES |
+| Universal (all 5 companies / all platforms of this datatype) | Layer 1 schema yaml | NO — abort and propose a separate Layer 1 change spec |
+
+The discriminator is **task intent**, not the file being edited. A task explicitly described as a Layer 1 refactor (e.g., adding a new required field across all companies, raising a field from optional to required, partitioning a fat datatype into a thin master) is a **dedicated Layer 1 task** and is fully legitimate. MP159 applies to bridge-authoring tasks where Layer 1 edits would be a side-effect.
+
+## Anti-Pattern Examples
+
+### Anti-pattern A — Source has unexpected column
+
+**Wrong**: source has `internal-tracking-id` column. Bridge author thinks "I'll just add `tracking_id: { type: VARCHAR, required: false }` to canonical `sales` datatype to absorb this." → **violates MP159**.
+
+**Right**: list `internal-tracking-id` in the bridge's `ignored_columns:`. If the field is genuinely needed in canonical, that is a separate Layer 1 change spec subject to IC_P002 cross-co verification.
+
+### Anti-pattern B — Source missing canonical required field
+
+**Wrong**: source omits `unit_price` (which is canonical-required for `sales`). Bridge author thinks "I'll change `unit_price.required: true` to `false` in `core_schemas.yaml`." → **violates MP159**.
+
+**Right**: in the bridge, set `unit_price: { apply_fallback: true }` to delegate to schema's fallback rule, OR add a derivation hint via `notes:` and possibly a future `derive_from:` instruction. If the field genuinely should not be required, that is a separate Layer 1 change spec.
+
+### Anti-pattern C — Source uses unusual encoding
+
+**Wrong**: source uses `"標竿產品"` / `"競爭對手"` for ownership; bridge author thinks "I'll add Chinese strings to `is_own_product.coercion.rule` in `core_schemas.yaml`." → **violates MP159**.
+
+**Right**: in the bridge, add `is_own_product: { from_column: "owner_type", value_map: { "標竿產品": true, "競爭對手": false } }`. Per-company / per-language value translation belongs in Layer 2.
+
+### Anti-pattern D — Source has multiple columns for one canonical field
+
+**Wrong**: source has `email_primary` and `email_legacy`; bridge author thinks "I'll add a new alias `email_primary` to `core_schemas.yaml` so the LLM picks it." → **violates MP159** AND fails to handle the legacy column.
+
+**Right**: use bridge yaml's `from_columns: ["email_primary", "email_legacy"]` + `merge_strategy: "coalesce"` (DM_R065 multi-column merge syntax). Per-source column lists belong in Layer 2.
+
+### Anti-pattern E — Cosmetic Layer 1 edit during bridge authoring
+
+**Wrong**: while writing a bridge, author notices a typo in a `description_zh` field of `core_schemas.yaml` and fixes it inline.
+
+**Right**: even cosmetic edits violate MP159 because (a) they pollute the bridge-authoring commit's diff, (b) reviewers approving the bridge are not auditing Layer 1 changes, (c) IC_P002 cross-co verification was not triggered. File a separate trivial fix commit (or batch with the next Layer 1 change spec).
+
+## Why This Rule Matters
+
+### Reason 1 — IC_P002 cross-company verification depends on it
+
+Layer 1 schema files are bound by MP102 v1.2 and consumed by all 5 companies (QEF_DESIGN, D_RACING, MAMBA, WISER, kitchenMAMA). A change to `core_schemas.yaml` requires the implementer to verify the change is appropriate for all 5 companies and append a `Verified:` trailer to the commit message. Bridge authoring sessions don't trigger this verification path; if Layer 1 edits leak into bridge-authoring commits, the verification is silently skipped.
+
+### Reason 2 — MP158 axis-3 bounded cost guarantee
+
+MP158 asserts that adding the Nth company costs only Step 3 (write a bridge yaml) — Steps 1-2 (schema + DDL) are amortized. This guarantee only holds if the bridge author for company N cannot cause Steps 1-2 to need redoing. If company-N bridge author edits Layer 1, then companies 1..N-1 silently inherit the change. Bounded cost becomes unbounded cost.
+
+### Reason 3 — Runtime determinism
+
+The `fn_glue_bridge.R` deterministic interpreter (LLM_CODEGEN_TIME_ONLY guard, audit-grep tested at #489 Phase 4) assumes the canonical schema is the same at runtime as at bridge-authoring time. If a bridge was authored against a temporarily-modified Layer 1, the runtime sees a different schema and the bridge's behavior diverges.
+
+### Reason 4 — LLM hallucination resistance
+
+When the `glue-bridge` skill (Step 5) prompts an LLM with the canonical schema + the prerawdata column list, LLMs sometimes propose "easier" answers that involve adding fields to the schema. MP159 establishes the explicit rule that the skill (and the bundled validator) blocks; without the rule, LLM proposals to edit Layer 1 cannot be cleanly refused.
+
+## Files Bound
+
+| File | Status under MP159 |
+|---|---|
+| `shared/global_scripts/01_db/raw_schema/_authoring/core_schemas.yaml` | Immutable during bridge authoring sessions |
+| `shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/amz_extensions.yaml` | Immutable during bridge authoring sessions |
+| `shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/eby_extensions.yaml` | Immutable during bridge authoring sessions |
+| `shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/cbz_extensions.yaml` | Immutable during bridge authoring sessions |
+| `shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/shp_extensions.yaml` | Immutable during bridge authoring sessions |
+| `shared/global_scripts/01_db/raw_schema/_authoring/platform_extensions/official_website_extensions.yaml` | Immutable during bridge authoring sessions |
+| `shared/global_scripts/01_db/raw_schema/_authoring/bridges/{COMPANY}/{platform}/{source}.bridge.yaml` | The only allowed mutation surface |
+
+## Change Discipline
+
+### Layer 1 changes (the legitimate path)
+
+A Layer 1 change SHALL go through its own spectra change spec (or a clearly-scoped task within an existing change). Required steps:
+
+1. The task description explicitly states "Layer 1 work" or equivalent
+2. The implementer verifies the change is appropriate for all 5 consuming companies (per IC_P002)
+3. The commit message contains the `Verified:` trailer naming the 5 companies
+4. The change includes any necessary DDL regeneration (re-run `_build.R` per MP158 Step 2)
+5. Affected bridges (if any) are updated and re-validated in the same change
+
+### Bridge authoring (the routine path)
+
+A bridge authoring session SHALL:
+
+1. Begin with `glue-bridge` skill Step 0 immutability preflight, which states MP159 explicitly
+2. Confine all writes to a single `bridges/{COMPANY}/{platform}/{source}.bridge.yaml` file
+3. Use `apply_fallback`, `use_value`, `value_map`, `pre_filter`, `ignored_columns`, `from_columns + merge_strategy` for all per-source idiosyncrasies
+4. If the author identifies a need for Layer 1 changes, abort the bridge authoring session and propose a separate Layer 1 change spec (per the legitimate path above)
+
+## Enforcement
+
+### Skill-level (advisory)
+
+`shared/global_scripts/00_principles/.claude/skills/glue-bridge/SKILL.md` Step 0 documents MP159 as a preflight and instructs the agent to refuse Layer 1 edits during the skill flow.
+
+### Validator-level (mechanical)
+
+`shared/global_scripts/00_principles/.claude/skills/glue-bridge/scripts/validate_bridge_yaml.R` SHALL include a check that every canonical field referenced in `column_mapping` exists in the current `core_schemas.yaml` (or applicable `platform_extensions/{platform}_extensions.yaml`) under the bridge's `canonical_target.datatype`. A reference to a field that does not exist suggests the bridge was authored against a temporarily-modified Layer 1 — CRITICAL violation.
+
+### Runtime-level (transitive guarantee)
+
+The `fn_glue_bridge.R` runtime already validates that bridge-declared canonical fields are part of the table schema (the DDL it writes to). If a bridge was authored against an out-of-tree Layer 1 mutation that was reverted before the runtime ran, the runtime will refuse the bridge with a schema mismatch.
+
+## Exceptions
+
+The following situations are NOT MP159 violations:
+
+- **Dedicated Layer 1 refactor task**: a task whose explicit intent is Layer 1 work (e.g., qef-product-master-redesign task 9.1, the thin-master refactor). The discriminator is task intent.
+- **Adding a new datatype to Layer 1** (MP158 axis-1 Step 1): explicit Step-1 work.
+- **Adding a new platform's extensions to Layer 1** (MP158 axis-2 Step 1): explicit Step-1 work.
+- **Bridge yaml regeneration after Layer 1 changes**: when Layer 1 changes (via the legitimate path above), the affected bridges may need re-authoring against the new schema. This is a follow-up task, not a violation.
+
+## Related Principles
+
+| Principle | Relationship |
+|---|---|
+| MP157 | MP159 is the explicit form of MP157's implicit Layer 1 immutability assumption |
+| MP158 | Axis-3 (new company) bounded-cost guarantee depends on MP159 |
+| MP156 | Tier-2 binding-discipline already requires Layer 1 changes to be structured; MP159 prevents undisciplined edits during a different task |
+| MP102 | The schema files MP159 protects. **MP102 v1.3 (#500) sister extension**: MP159 governs Layer-1 immutability during bridge authoring; MP102 v1.3 governs the bridge yaml's `reviewed_by` immutability via audit trail (sibling `*.bridge.review.md` with `## Verdict:` line). Both prevent post-fact tampering — MP159 against schema mutation, MP102 v1.3 against review-claim mutation. |
+| IC_P002 | Cross-company verification cost MP159 prevents from being silently skipped |
+| DM_R065 | The Layer 2 dedup primitives MP159 directs un-mappable parts toward |
+| MP160 | MP159 forbids Layer 1 mutation during bridge authoring; MP160 strengthens MP159's premise — if Layer 1 is fully enumerated at authoring time, "I need to mutate Layer 1 for this column" reduces to "I need a Layer 2 ignored_columns entry for this column", removing the temptation to violate MP159 at the source. |
+| DEV_R056 | Sibling principle in the implicit-convention-to-explicit-rule pattern. MP159 elevated Layer 1 immutability from convention to rule; DEV_R056 elevates project language (R) from convention to rule. Both principles answer "what should AI default to when no rule says otherwise" with explicit normative statements. |
+| MP161 | Sibling principle in the implicit-convention-to-explicit-rule pattern. MP159 elevated Layer 1 immutability from convention to rule; MP161 elevates company-scope classification from convention to rule. Together they specify both WHAT-stays-immutable (MP159) and WHERE-it-lives (MP161). |
+
+## References
+
+- spectra change `qef-product-master-redesign` Phase 9 Review Addendum (2026-04-28), design decision D12
+- GitHub issue #494 (MP159 proposal source)
+- Trigger: user feedback during Phase 9 task 9.1 review — "glue 的過程是不能修改 core schema 的，如果無法串接上去的部分應該在 bridge 上記錄就好"

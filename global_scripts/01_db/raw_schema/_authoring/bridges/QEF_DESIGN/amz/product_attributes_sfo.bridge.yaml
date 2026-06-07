@@ -1,0 +1,487 @@
+prerawdata_source:
+  company: QEF_DESIGN
+  platform: amz
+  source_type: csv
+  source_uri: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_sfo.csv
+  sheet_name: ~
+  schema_fingerprint:
+    algorithm: sha256
+    value: 9c8c0ea47e047688ff3bcad23cb34d0e6a0ee1ad6f4c3e61a880c84d9f5fc206
+    fingerprinted_against: QEF_DESIGN/data/database_to_csv/raw_data/df_product_profile_sfo.csv
+      — single file (48 rows); regenerated 2026-05-12 with normalized helper per fix-glue-layer-infra-blockers
+      (#628)
+    fingerprinted_at: '2026-05-12T01:47:48Z'
+canonical_target:
+  datatype: product_attributes_sfo
+  platform: amz
+  table: df_amz_product_attributes_sfo___raw
+  schema_yaml_path: 01_db/raw_schema/_authoring/companies/QEF_DESIGN/product_attribute_schemas.yaml
+  platform_extension_yaml_path: 01_db/raw_schema/_authoring/platform_extensions/amz_extensions.yaml
+pre_filter:
+- column: 品牌
+  exclude_na: yes
+- column: 銷售平台
+  exclude_na: yes
+field_extractors:
+  brand:
+    type: column
+    name: 品牌
+    value_map:
+      NA: ~
+  sales_platform:
+    type: column
+    name: 銷售平台
+    value_map:
+      NA: ~
+  sku:
+    type: column
+    name: SKU
+    value_map:
+      NA: ~
+  asin:
+    type: column
+    name: ASIN
+    value_map:
+      NA: ~
+  product_name:
+    type: column
+    name: 商品名稱
+    value_map:
+      NA: ~
+  rank:
+    type: column
+    name: 排名
+    value_map:
+      NA: ~
+  is_competitor:
+    type: column
+    name: 競爭對手
+    value_map:
+      NA: ~
+  color_lens:
+    type: column
+    name: 鏡片顏色
+    value_map:
+      NA: ~
+  rating_no_distortion:
+    type: column
+    name: 無失真
+    value_map:
+      NA: ~
+  rating_comfortable_wear:
+    type: column
+    name: 穿戴舒適
+    value_map:
+      NA: ~
+  rating_durability:
+    type: column
+    name: 耐用性
+    value_map:
+      NA: ~
+  rating_clear_vision:
+    type: column
+    name: 視野清晰
+    value_map:
+      NA: ~
+  review_rating:
+    type: column
+    name: 評論星級
+    value_map:
+      NA: ~
+  review_count:
+    type: column
+    name: 評論則數
+    value_map:
+      NA: ~
+  url:
+    type: column
+    name: 網址
+    value_map:
+      NA: ~
+  is_benchmark_product:
+    type: column
+    name: 標竿產品
+    value_map:
+      NA: ~
+  price:
+    type: column
+    name: 價格
+    value_map:
+      NA: ~
+  quantity:
+    type: column
+    name: 數量
+    value_map:
+      NA: ~
+  color_frame:
+    type: column
+    name: 鏡框顏色
+    value_map:
+      NA: ~
+  material_frame:
+    type: column
+    name: 鏡框材質
+    value_map:
+      NA: ~
+  material_lens:
+    type: column
+    name: 鏡片材質
+    value_map:
+      NA: ~
+  material_nose_pad:
+    type: column
+    name: 鼻墊材質
+    value_map:
+      NA: ~
+  material_temple_tip:
+    type: column
+    name: 鏡腳末端材質
+    value_map:
+      NA: ~
+  dimension_frame_width:
+    type: column
+    name: 鏡框寬度
+    value_map:
+      NA: ~
+  dimension_frame_max_width:
+    type: column
+    name: 鏡框最大寬度
+    value_map:
+      NA: ~
+  dimension_frame_height:
+    type: column
+    name: 鏡框高度
+    value_map:
+      NA: ~
+  dimension_temple_length:
+    type: column
+    name: 鏡腳長度
+    value_map:
+      NA: ~
+  dimension_temple_max_length:
+    type: column
+    name: 鏡腳最大長度
+    value_map:
+      NA: ~
+  dimension_bridge_width:
+    type: column
+    name: 鼻橋寬度
+    value_map:
+      NA: ~
+  prescription_frame_max_width:
+    type: column
+    name: 處方眼鏡鏡框最大寬度
+    value_map:
+      NA: ~
+  prescription_lens_max_width:
+    type: column
+    name: 處方眼鏡鏡片最大寬度
+    value_map:
+      NA: ~
+  prescription_lens_max_height:
+    type: column
+    name: 處方眼鏡鏡片最大高度
+    value_map:
+      NA: ~
+  dimension_product_weight:
+    type: column
+    name: 產品重量
+    value_map:
+      NA: ~
+  country_of_origin:
+    type: column
+    name: 原產地
+    value_map:
+      NA: ~
+  clip_on_frame:
+    type: column
+    name: 外掛式鏡框
+    value_map:
+      NA: ~
+  clip_on_fit_round:
+    type: column
+    name: 外掛式鏡框適配_圓形
+    value_map:
+      NA: ~
+  clip_on_fit_square:
+    type: column
+    name: 外掛式鏡框適配_方形
+    value_map:
+      NA: ~
+  clip_on_fit_thickness:
+    type: column
+    name: 外掛式鏡框適配_厚度
+    value_map:
+      NA: ~
+  feature_flexible_frame:
+    type: column
+    name: 彈性鏡框
+    value_map:
+      NA: ~
+  feature_bendable_temple_tip:
+    type: column
+    name: 可彎鏡腳尾端
+    value_map:
+      NA: ~
+  feature_adjustable_temple:
+    type: column
+    name: 可調整鏡腿
+    value_map:
+      NA: ~
+  feature_anti_slip_temple:
+    type: column
+    name: 防滑鏡腳
+    value_map:
+      NA: ~
+  accessory_strap_included:
+    type: column
+    name: 附帶綁帶
+    value_map:
+      NA: ~
+  feature_wraparound:
+    type: column
+    name: 環繞式設計
+    value_map:
+      NA: ~
+  feature_side_shield:
+    type: column
+    name: 側護片
+    value_map:
+      NA: ~
+  warranty:
+    type: column
+    name: 保固
+    value_map:
+      NA: ~
+  feature_anti_fog:
+    type: column
+    name: 防霧功能
+    value_map:
+      NA: ~
+  feature_splash_resistant:
+    type: column
+    name: 防飛濺功能
+    value_map:
+      NA: ~
+  feature_impact_resistant:
+    type: column
+    name: 耐衝擊
+    value_map:
+      NA: ~
+  feature_anti_scratch:
+    type: column
+    name: 防刮功能
+    value_map:
+      NA: ~
+  standard_ansi_z87_1:
+    type: column
+    name: ANSI.Z87.1標準
+    value_map:
+      NA: ~
+  standard_osha_compliant:
+    type: column
+    name: 達OSHA標準
+    value_map:
+      NA: ~
+  standard_mdel:
+    type: column
+    name: MDEL認證
+    value_map:
+      NA: ~
+  feature_high_transmittance:
+    type: column
+    name: 高透射率
+    value_map:
+      NA: ~
+  cleaning_method:
+    type: column
+    name: 清潔方式
+    value_map:
+      NA: ~
+  protection_uv:
+    type: column
+    name: 紫外線防護
+    value_map:
+      NA: ~
+  feature_reduce_glare:
+    type: column
+    name: 降低眩光
+    value_map:
+      NA: ~
+  feature_true_color:
+    type: column
+    name: 真實色彩
+    value_map:
+      NA: ~
+  feature_perfect_fit:
+    type: column
+    name: 完美貼合
+    value_map:
+      NA: ~
+  feature_lightweight_design:
+    type: column
+    name: 輕巧設計
+    value_map:
+      NA: ~
+  feature_long_duration_use:
+    type: column
+    name: 長時間使用
+    value_map:
+      NA: ~
+  protection_eye_general:
+    type: column
+    name: 眼睛保護
+    value_map:
+      NA: ~
+  user_eyewear_wearer:
+    type: column
+    name: 眼鏡族
+    value_map:
+      NA: ~
+  user_worker:
+    type: column
+    name: 工人
+    value_map:
+      NA: ~
+  scene_lab:
+    type: column
+    name: 實驗室
+    value_map:
+      NA: ~
+  activity_chemistry:
+    type: column
+    name: 化學
+    value_map:
+      NA: ~
+  activity_gardening:
+    type: column
+    name: 園藝
+    value_map:
+      NA: ~
+  activity_shooting:
+    type: column
+    name: 射擊
+    value_map:
+      NA: ~
+  activity_cycling:
+    type: column
+    name: 自行車
+    value_map:
+      NA: ~
+  activity_woodworking:
+    type: column
+    name: 木工
+    value_map:
+      NA: ~
+  activity_construction:
+    type: column
+    name: 建築
+    value_map:
+      NA: ~
+  activity_entertainment:
+    type: column
+    name: 娛樂
+    value_map:
+      NA: ~
+  scene_hospital:
+    type: column
+    name: 醫院
+    value_map:
+      NA: ~
+  user_dentist:
+    type: column
+    name: 牙醫
+    value_map:
+      NA: ~
+  scene_auto_repair:
+    type: column
+    name: 汽車維修廠
+    value_map:
+      NA: ~
+  scene_factory:
+    type: column
+    name: 工廠
+    value_map:
+      NA: ~
+  scene_painting_workshop:
+    type: column
+    name: 噴漆場景
+    value_map:
+      NA: ~
+  scene_outdoor_alt:
+    type: column
+    name: 室外場景
+    value_map:
+      NA: ~
+  scene_indoor:
+    type: column
+    name: 室內場景
+    value_map:
+      NA: ~
+  protection_uv_grade_u6:
+    type: column
+    name: U6紫外線防護等級
+    value_map:
+      NA: ~
+unused_source_columns:
+- etl_import_timestamp
+- etl_import_source
+- etl_product_line_id
+- etl_phase
+generated_at: '2026-04-29T09:06:48Z'
+generated_by: 'gen_product_attribute_bridges.R (qef-product-master-redesign 9.6, #460)'
+refingerprinted_at: '2026-05-05T19:00:00Z'
+refingerprint_session: 'qef-batch-bridges-ensemble-2026-05-05-part2 (7-bridge batch:
+  cas/psg/sfg/sfo/sgf/sgo/sss per #543 / #569 — class-level findings inherited from
+  bys/rpl/blb iter-1 ensemble at 13:00:00Z)'
+reviewed_by:
+  human_reviewer: kiki830621
+  review_mode: glue-ensemble-v1-batch-class-inherited
+  ai_reviewers:
+  - codex-cli@gpt-5.5-xhigh
+  - claude-opus-4-7-correctness
+  - claude-opus-4-7-devils-advocate
+  findings_summary:
+    critical: 0
+    high: 0
+    medium: 1
+    low: 3
+    suggestions: 1
+    resolved_in_iterations: 1
+  approved_at: '2026-05-05T19:00:00Z'
+  approved_in_commit: ''
+  review_artifacts: product_attributes_sfo.bridge.review.md
+  scoping_note: Batch ensemble class-inheritance (7-bridge batch part 2). Class-level
+    findings (M-1/L-1/L-2/S-1) established by bys/rpl/blb iter-1 ensemble at 2026-05-05T13:00:00Z;
+    per-PL spot-check verified mojibake L-3 for sfo. Mojibake in cols [商品名稱] (e.g.
+    'NoCry Safety Glasses... â Adjustable Temples...') — accepted per MP163 progressive
+    completeness, follow-up at next Gsheet audit. Security reviewer skipped per scoping
+    policy (config edit, no executable surface).
+findings_resolutions:
+- finding_id: M-1
+  severity: MEDIUM
+  description: Bridge yaml previously shipped with reviewed_by REQUIRES_HUMAN_REVIEW
+    placeholder
+  resolution: fixed inline this commit — placeholder replaced with structured form
+    per MP102 v1.3
+  accepted_by: kiki830621
+- finding_id: L-1
+  severity: LOW
+  description: BOM-prefix on first column header (per blb SUGGESTION-5 systemic)
+  resolution: accepted — runtime readr handles BOM transparently; cosmetic mismatch
+    with validator only
+  accepted_by: kiki830621
+- finding_id: L-2
+  severity: LOW
+  description: Wall-clock timestamps in generated_at/fingerprinted_at break idempotence
+    checks
+  resolution: accepted — matches blb iter-2 L-15 resolution; provenance value > idempotence
+    test value
+  accepted_by: kiki830621
+- finding_id: L-3
+  severity: LOW
+  description: UTF-8/CP1252 transcoding artifact in cols [商品名稱] (e.g. 'NoCry Safety
+    Glasses... â Adjustable Temples...') — same class as rpl L-1
+  resolution: accepted per MP163 progressive completeness — visible mojibake, will
+    be cleaned at next Gsheet audit; runtime ETL passes through faithfully
+  accepted_by: kiki830621

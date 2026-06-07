@@ -1,0 +1,70 @@
+# MP165 v1.3 DRV-Output Shape Contracts — WISER (template / starter project)
+# Spectra change: mp165-drv-output-shape-gate (#668)
+#
+# Gate: shared/global_scripts/23_deployment/drv_output_shape_gate.R
+# Note: WISER's app_config.yaml has no `pipeline.platforms:` section
+#   (template stub). Tables in app_data.duckdb appear to be cloned dummy
+#   data shared with kitchenMAMA (df_customer_profile 7349 / df_dna_by_customer
+#   14260 / df_position 40). Poisson tables exist (df_cbz/eby_poisson_analysis_*)
+#   but all 0 rows with `predictor_type = ""` — broken template state.
+#
+# Severity choices (2026-05-14 baseline):
+#   - DNA tables: critical (real numbers from dummy data)
+#   - Position: critical (40 rows is meaningful)
+#   - Poisson (cbz + eby): WARNING — all currently 0 rows with empty
+#     predictor_type. Will fail L2 + L3 on every run; gate surfaces the
+#     template-state gap without blocking daily WISER ops.
+#
+# Sunset: 2026-06-13 (per MP165 v1.3 default)
+
+company: WISER
+
+drv_contracts:
+
+  # --- Cross-platform DNA (D01) ---
+  all:
+
+    df_customer_profile:
+      l2_row_count_min: 1000
+      severity: critical
+
+    df_dna_by_customer:
+      l2_row_count_min: 5000
+      severity: critical
+
+    df_position:
+      l2_row_count_min: 20
+      severity: critical
+
+  # --- cbz Poisson placeholder (warning — broken template state) ---
+  cbz:
+
+    df_cbz_poisson_analysis_alf:
+      l2_row_count_min: 1
+      severity: warning
+
+    df_cbz_poisson_analysis_hc:
+      l2_row_count_min: 1
+      severity: warning
+
+    df_cbz_poisson_analysis_sop:
+      l2_row_count_min: 1
+      severity: warning
+
+  # --- eby Poisson placeholder (warning — same template state) ---
+  eby:
+
+    df_eby_poisson_analysis_alf:
+      l2_row_count_min: 1
+      severity: warning
+
+    df_eby_poisson_analysis_hc:
+      l2_row_count_min: 1
+      severity: warning
+
+    df_eby_poisson_analysis_sop:
+      l2_row_count_min: 1
+      severity: warning
+
+# Per-company opt-in to strict-mode before sunset (default false)
+strict_mode: false

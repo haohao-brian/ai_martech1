@@ -1,0 +1,75 @@
+---
+title: "MP009: Discrepancy Principle"
+subtitle: "Meta-principle for system design and implementation"
+author: "Claude"
+date: "2025-04-02"
+date-modified: "2026-04-30"
+version: "1.1"
+categories: []
+related_to:
+  - "MP163": "Progressive Completeness (sister principle — MP163 sentinels (e.g. 'unclassified', 'UNKNOWN') are explicit gap markers, NOT fabricated data, and therefore strengthen rather than violate the no-fake-information rule. The two principles work in the same direction: face missing data honestly via visible sentinels, never via fabrication or silent drop.)"
+  - "MP154": "Side Effect Defense (companion — MP154 prohibits silently destroying data; MP029 prohibits fabricating data; MP163 ties them together by requiring visible sentinel materialization)"
+  - "MP165": "Dashboard Presence as Pipeline Acceptance (specific application of MP029 at the rendering boundary — MP029 demands verify-before-acting against fake information; MP165 contract assertions are concrete reproductions: a 1-row 'Ideal' placeholder is observably-empty even if row count is technically >= 1, so the strengthened assert_datatable_meaningful_rows primitive operationalizes MP029 at the rendering boundary by excluding placeholder rows by default.) [back-edit added 2026-05-10 per spectra change dashboard-presence-verification]"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    code-tools: true
+crossref:
+  chapters: true
+---
+
+## Core Concept
+
+[This principle needs to be translated from the Chinese version]
+
+## Key Principles
+
+1. **Principle 1**: [To be added]
+2. **Principle 2**: [To be added]
+3. **Principle 3**: [To be added]
+
+## Implementation Guidelines
+
+[Implementation details to be added]
+
+## Examples
+
+```r
+# Example code to be added
+```
+
+## Related Principles
+
+### Sister Principles (added v1.1, 2026-04-30 per spectra change `mp163-progressive-completeness-principle`, GitHub issue #505)
+
+- **MP163: Progressive Completeness** — MP029 forbids fabricated information; MP163 codifies the **correct way to face missing human input**: pipeline keeps running, gaps materialize as **explicit sentinel values** (`'unclassified'`, `'UNKNOWN'`, domain-specific markers), and those sentinels surface to a business attention loop. MP163 sentinels are NOT fabricated data — they are **visible gap markers** that say "this row's classification is in the gap bucket." Compare:
+  - MP029 violation: assigning `product_line_id = 'blb'` to an unmapped ASIN to "look complete"
+  - MP163 compliance: assigning `product_line_id = 'unclassified'` to surface the gap visibly
+
+  The two principles work in the same direction. MP163 is MP029's correct way to handle missing data: visibly, not by fabrication and not by silent drop.
+
+### Derives From
+- MP000: Axiomatization System
+- MP001: Primitive Terms and Definitions
+
+### Influences
+- P005: Naming Principles
+- R005: Renaming Methods
+
+## Benefits
+
+1. **Benefit 1**: [To be added]
+2. **Benefit 2**: [To be added]
+3. **Benefit 3**: [To be added]
+
+## Implementation Checklist
+
+- [ ] Checklist item 1
+- [ ] Checklist item 2
+- [ ] Checklist item 3
+
+## Conclusion
+
+[Conclusion to be added]

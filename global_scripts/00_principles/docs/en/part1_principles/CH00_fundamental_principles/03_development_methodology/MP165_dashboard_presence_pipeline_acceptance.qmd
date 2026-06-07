@@ -1,0 +1,523 @@
+---
+title: "MP165: Dashboard Presence as Pipeline Acceptance"
+subtitle: "Pipeline acceptance contract extends from db-write completion to per-dashboard-tab × per-platform × per-product_line every-field rendering presence"
+category: "Meta-Principle"
+type: "Meta-Principle"
+id: "MP165"
+version: "1.3"
+date_created: "2026-05-10"
+date_modified: "2026-05-14"
+status: "active"
+weight: 165
+author: "Claude (spectra change dashboard-presence-verification, GitHub issue #599 surfaced from #595 reproduce)"
+related_to:
+  - "MP029": "No Fake Information (MP165 contract assertions verify real values rendered to users — 1-row 'Ideal' placeholder counts as a gap to surface, not as success; aligns with MP029 verify-before-acting)"
+  - "MP102": "ETL Output Standardization (MP102 v1.3 governs bridge yaml authoring contract; MP165 adds the downstream rendering contract — bridge yaml correct + DRV pipeline complete is necessary but not sufficient for user-visible completeness)"
+  - "MP162": "Bridge End-to-End Realization (MP162 governs the per-bridge L1-L5 ship-readiness rung where L4 requires at least one Shiny module render with > 0 rows; MP165 is the per-dashboard-tab × per-platform × per-product_line complement — different unit, sister axis)"
+  - "MP163": "Progressive Completeness (MP163 governs the input-completeness axis — pipeline keeps running when human inputs are absent, gaps surface as sentinels; MP165 governs the rendering-acceptance axis — pipeline succeeds only when every dashboard tab, for every active platform / product_line, renders contract-pass content. The two are orthogonal: both must hold for user-facing completeness.)"
+binds:
+  - "shared/global_scripts/98_test/e2e/contracts/contracts.R"
+  - "shared/global_scripts/98_test/e2e/contracts/*.yaml"
+  - "shared/global_scripts/98_test/e2e/contracts/*_drv.yaml"
+  - "shared/global_scripts/98_test/e2e/test-*.R"
+  - "shared/global_scripts/98_test/test_drv_output_shape_gate.R"
+  - "shared/global_scripts/23_deployment/dashboard_presence_gate.R"
+  - "shared/global_scripts/23_deployment/drv_output_shape_gate.R"
+  - "shared/update_scripts/DRV/_targets.R"
+  - "shared/global_scripts/00_principles/.claude/rules/01-always.md"
+---
+
+## Summary
+
+Pipeline acceptance SHALL be defined at the user-visible rendering layer, not the database-write layer. A `make run` that completes all derivation targets SHALL NOT be considered successful unless every dashboard tab, for every active platform and product_line, renders content that satisfies declared per-element contracts (KPI value thresholds, DataTable meaningful row counts excluding placeholders, Plotly trace counts, filter dropdown choice counts). Hard fail at the DRV-end lite gate (NULL output detection) and at the deploy-gate full gate (every-field contract suite) prevents silent failures where the database is correctly populated but the user sees an empty dashboard.
+
+## Motivation
+
+GitHub issue #599 (filed 2026-05-10 as a meta-issue spawned from #595): during `/idd-implement #595` close session, the user observed that `#595` Phase A/B/C ship completed all of:
+
+- `app_config.yaml database.mode` corrected from `duckdb` to `auto` (3 PRs across QEF_DESIGN, deploy bundle, D_RACING)
+- `dbConnect_universal()` fail-loud regression test suite (locks against silent-create-empty-db reliance)
+- `preflight_deploy_check.R` blocking deploy-time configuration mismatches
+- `check_production_data.R` HTTP smoke against deployed Connect Cloud URL
+
+…and yet the user could still locally reproduce QEF BrandEdge dashboard with no data when launching `Rscript app.R` from `l4_enterprise/QEF_DESIGN/`. The Phase A/B/C verification chain was correct in its narrow scope (deploy mode, db connection, HTTP availability) but missed the actual user-reported bug class — UI-layer rendering failure (3 distinct root causes in this case: hardcoded English empty-state, AI scoring data gap producing 50/54 NA-attribute rows, and `translate()` non-vectorized triggering "the condition has length > 1" red error).
+
+> User observation that triggered this principle (2026-05-10):
+>
+> 「你可以說你是怎麼確認資料都會出現在儀表版上呢?就是我現在其實還先不用部署就看到 QEF 沒正常顯示了」
+>
+> 「test 必須檢視每一個欄位的數值」、「shinytest2 的 e2e 完整的 test」、「這些 test 是不是應該加入在 drv 的最後…這是原本 drv 需要補充的東西(也需要進入 principle)」
+
+The implicit architectural commitment — "pipeline complete means dashboard-visible to the user" — was missing. MP162 covers this axis at the per-bridge L4 level (at least one Shiny module renders > 0 rows), but the per-dashboard-tab × per-platform × per-product_line granularity needed by `#595` is finer. MP163 covers a different axis entirely (input-completeness, not rendering-acceptance). MP165 fills the gap.
+
+## Principle Statement
+
+> A pipeline run SHALL be considered successful only when, for every active platform and active product_line in the company configuration, every dashboard tab declared in the per-company contract YAML renders content satisfying every contract assertion. Database-write completion is necessary but not sufficient. Failure to meet rendering acceptance SHALL halt the pipeline (DRV-end gate) or refuse the deploy (deploy gate).
+
+The principle decomposes into three contract tiers, layered for performance, plus the framework primitives that enforce them.
+
+## Two-Axis Acceptance Framework (v1.1, 2026-05-13)
+
+The principle SHALL be applied along two orthogonal axes — **quality** (what to verify) and **context** (where to verify with what stringency). Both axes must hold for pipeline acceptance.
+
+### Quality Axis
+
+- **Step 1: No Red Errors** — every user-visible error count SHALL be zero:
+  - Zero R `stop()` / uncaught errors propagating to the Shiny output area
+  - Zero `[DEBUG_MODE_NULL_OUTPUT]` markers in `.shiny-debug/shiny.log`
+  - Zero red error text strings rendered in the UI (e.g., "the condition has length > 1")
+  - Zero JavaScript console errors during the default sidebar navigation walk
+- **Step 2: Meaningful Values** — every user-visible value SHALL be informative:
+  - KPI cards show numeric values satisfying declared `op` / `threshold`
+  - DataTables show ≥ `min_rows` rows AFTER excluding placeholder rows (`Ideal`, `Rating`, `Revenue`)
+  - Plotly charts show ≥ `min_traces` non-empty data arrays
+  - Filter dropdowns expose ≥ `min_choices` valid choices
+  - No card shows `-` / `NULL` / `NA` placeholder where a real value is expected
+
+Step 1 is necessary but not sufficient for Step 2: a tab that renders zero errors but displays `-` for every KPI passes Step 1 and fails Step 2.
+
+### Context Axis
+
+- **Local check** (dev-time) — invoked during interactive development:
+  - Tools: `Rscript app.R` + agent-browser snapshots + console grep
+  - Stringency: `severity: critical` SHALL still fail loudly; `severity: warning` SHALL be reported but MAY allow developer to continue iterating
+  - Cadence: developer-driven; recommended before each commit AND after each branch switch
+  - Purpose: catch regressions cheaply during the edit-compile-test cycle
+- **Deploy check** (pre-deploy gate) — invoked before `make deploy-push`:
+  - Tools: `shared/global_scripts/23_deployment/dashboard_presence_gate.R`
+  - Stringency: any `severity: critical` failure SHALL refuse the deploy push (non-zero exit). `severity: warning` reported but does not block.
+  - Cadence: every deploy; required gate
+  - Purpose: prevent production from regressing to a state the local check would have caught
+
+The two contexts use the **same** per-company contract YAML and the **same** primitive helpers in `contracts.R`. The difference is stringency and runtime budget, NOT contract content.
+
+### The 2×2 Matrix
+
+|                  | Step 1: No Red Errors                                                | Step 2: Meaningful Values                                                          |
+| ---------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Local check**  | dev `Rscript app.R` console + browser console: zero red errors / zero `[DEBUG_MODE_NULL_OUTPUT]` | dev-time spot-check: KPI / DataTable show non-placeholder informative values        |
+| **Deploy check** | `dashboard_presence_gate.R` refuses deploy on any `no_red_error_text` critical fail | `dashboard_presence_gate.R` refuses deploy on any `assert_*meaningful*` critical fail |
+
+The 2×2 cells correspond to **deliverable verification artifacts**, not to disjoint code paths.
+
+## Tier ↔ Step Mapping (v1.1)
+
+The Tier system (1 / 2 / 3) describes **when** the check runs (implementation timing); the Step system (1 / 2) describes **what** the check verifies (quality criterion). They are NOT one-to-one.
+
+| MP165 Tier (timing)                | Step 1 covered?                                  | Step 2 covered?                                          | Primary context |
+| ---------------------------------- | ------------------------------------------------ | -------------------------------------------------------- | --------------- |
+| Tier 1 lite (DRV-end)              | YES (`[DEBUG_MODE_NULL_OUTPUT]` marker scan)      | NO (only checks NULL outputs, not values)                | Local-ish (dev + CI both run it) |
+| Tier 2 full (deploy-gate)          | YES (`no_red_error_text` assertion across all UI) | YES (KPI threshold + DataTable rows + Plotly + dropdowns) | Deploy (strict) |
+| Tier 3 CI selective (per PR)       | YES (per-module subset)                          | YES (per-module subset)                                  | CI (PR-scoped)  |
+
+Implications:
+
+- **Step 1 is NOT a single-Tier task**: `no_red_error_text` assertion appears in Tier 2 and Tier 3 contracts too. `[DEBUG_MODE_NULL_OUTPUT]` is the Tier 1 fast signal, but deploy-gate re-verifies it.
+- **Step 2 is NOT a deploy-only task**: Local check SHALL include Step 2 spot-checks even though dev-time stringency is softer than deploy-gate stringency.
+- **The 2×2 framework lives at the principle layer**, the Tier system lives at the implementation layer. Future contract primitives may serve either Step 1 or Step 2 (or both) and may run in any Tier.
+
+## Local Check Discipline (v1.1)
+
+Local check SHALL adhere to the same contract YAML and primitive helpers as deploy check, with two stringency relaxations and one cadence expectation.
+
+### Stringency Relaxations
+
+1. **Warning tolerance**: `severity: warning` contract failures during local check SHALL be reported (e.g., console log) but SHALL NOT halt the dev session.
+2. **Optional `--severity-mode soft` flag** (when implemented in `run_smoke_lite.R` or a dedicated `run_local_check.R`): downgrades critical failures to warnings for the local context ONLY. This flag SHALL NOT exist on `dashboard_presence_gate.R` (deploy-gate hard-fail discipline is non-negotiable).
+
+### Cadence
+
+- Recommended: run local check before each commit AND after each branch switch.
+- Required for fail-loud branches: when working on shared utilities consumed by all modules (e.g., `fn_translation.R`), local check SHALL run the full contract suite (mirrors Tier 3 reverse-dependency triggering).
+
+### Tools
+
+- Primary: `nohup Rscript app.R` + `agent-browser` snapshots + console grep (per backbone choice in Tier 1/2 sections).
+- Diagnostic: `safari-browser` for live URL post-deploy verification (macOS only; native Safari, supports tab locking).
+- Forbidden in local check: `shinytest2` AppDriver for dashboard-level walks (per backbone amendment from `#604`/`#605`).
+
+### Distinction From Deploy Check
+
+| Aspect          | Local check                                       | Deploy check                                        |
+| --------------- | ------------------------------------------------- | --------------------------------------------------- |
+| Trigger         | Developer-initiated                                | Automatic before `make deploy-push`                  |
+| Stringency      | Warnings tolerated; critical still fail-loud      | Any critical fail blocks deploy; warnings reported  |
+| Runtime budget  | Best-effort (developer's call)                    | ≤ 60s hard ceiling per company                       |
+| Failure action  | Developer fixes and re-runs                       | Pipeline aborts; deploy refused                      |
+| Coverage scope  | Full or partial (developer's choice)              | Full contract suite for every active platform / PL   |
+
+## Dual-Track Architecture (v1.2, 2026-05-13)
+
+v1.2 codifies the long-implicit separation between two complementary tracks of dashboard rendering acceptance, both of which contribute to MP165 conformance:
+
+### Track A: Declarative Baseline (existing)
+
+Hand-maintained `qef_design.yaml` / `d_racing.yaml` / `mamba.yaml` / `wiser.yaml` / `kitchenmama.yaml` contract files, paired with the `contracts.R` primitive library + `dashboard_presence_gate.R` runner. Authors explicitly declare every selector and assertion. Auditable, deterministic, version-controlled. **Floor** of dashboard testing — what we know we want to test.
+
+Properties:
+- Closed-world coverage: only declared selectors evaluated
+- Reproducible CI / deploy-gate behavior
+- Hand-maintained — coverage growth proportional to author effort
+
+### Track B: Adaptive Overlay (new, v1.2)
+
+The `/shiny-adaptive-walk` skill (in `r-shiny-debugger` plugin v1.1+) executes a self-converging loop that discovers defects beyond the declarative baseline. Each iteration:
+
+1. Walks the dashboard via safari-browser (real macOS renderer = user ground truth)
+2. LLM judge classifies each visible defect: `real_bug` / `test_infra_gap` / `acceptable`
+3. Bifurcated action:
+   - `real_bug` → file `/idd-issue` (skill does NOT touch production code)
+   - `test_infra_gap` → skill auto-mutates Track A files (yaml / primitives / walker)
+4. Per-iter safety gate (test_dir + mechanical gate) + auto-rollback on regression
+5. Convergence: CONVERGED / PLATEAUED / DIMINISHING (mirrors MP102 v1.3 `/glue-bridge` pattern)
+
+**Ceiling** of dashboard testing — what we should test that we don't know to test yet.
+
+Properties:
+- Open-world coverage: walker discovers leaf sub-tabs + LLM judge surfaces unknown defects
+- Skill mutations are observable via git diff (each iter = one commit)
+- Coverage growth via convergence loop, bounded by `MP165_ADAPTIVE_BUDGET` LLM call cap
+
+### (C) Aggressive Test-Framework Authority
+
+Track B operates under **(C) Aggressive authority** over the test framework — skill MAY edit any file in the **mutable zone**:
+
+- `shared/global_scripts/98_test/e2e/contracts/*.yaml`
+- `shared/global_scripts/98_test/e2e/contracts/contracts.R`
+- `shared/global_scripts/98_test/e2e/run_smoke_lite.R`
+- `shared/global_scripts/98_test/e2e/test-*.R`
+- `shared/global_scripts/23_deployment/dashboard_presence_gate.R`
+- `shared/global_scripts/04_utils/fn_debug_mode.R`
+
+Skill **MUST NOT** edit any file in the **immutable zone** (files `/idd-issue` instead):
+
+- `shared/global_scripts/10_rshinyapp_components/**` (UI components)
+- `shared/global_scripts/16_derivations/**` (business logic)
+- `shared/global_scripts/04_utils/fn_analysis_*.R` (analysis functions)
+- `shared/update_scripts/ETL/**`, `shared/update_scripts/DRV/**` (pipelines)
+- Any `.qmd` principle file (human-only decision)
+
+Pre-mutation glob check is hard-coded in the skill spec. Mutation attempt against immutable zone is a skill bug.
+
+### Track convergence
+
+The two tracks are complementary, not competitive:
+
+- Track B discovers a defect → files issue (`real_bug`) OR adds contract to Track A `# === auto-suggested ===` block (`test_infra_gap`)
+- Track A contracts evaluated by `dashboard_presence_gate.R` — Track B's mechanical regression step
+- Hand-maintained sections of yaml are immutable to Track B (sister to MP159 Layer 1 immutability for glue authoring)
+
+**Declarative is the floor; adaptive is the ceiling.** Both axes must hold for full MP165 conformance.
+
+## DRV-Layer Step 2 Propagation (v1.3, 2026-05-14)
+
+v1.1 introduced **Step 2 "Meaningful Values"** as a quality-axis acceptance criterion enforced at the dashboard layer (KPI > threshold, DataTable rows ≥ min excluding placeholders, Plotly traces non-empty, dropdowns ≥ min_choices). v1.2 added the dual-track architecture (Track A declarative + Track B adaptive) for that dashboard-layer enforcement. **v1.3 propagates Step 2 to the DRV layer.**
+
+### The vacuous-pass gap that motivated v1.3
+
+The dashboard-layer Step 2 gate catches DRV vacuous-pass cases (DRV pipeline reports success producing empty / partial output tables) only *after* the user navigates to the affected sub-tab. Three concrete cases discovered in 2026-05-13 cross-company adaptive walk (issue [#668](https://github.com/kiki830621/ai_martech_global_scripts/issues/668)):
+
+- **D_RACING amz**: `df_amz_poisson_analysis_all` table does not exist (DRV never invoked) — dashboard renders graceful empty state, but pipeline reported full success.
+- **QEF_DESIGN amz**: `df_amz_poisson_analysis_all` exists with 189 rows but ONLY `predictor_type = time_feature` (no `comment_attribute` / `product_attribute` rows). Dashboard InsightForge sub-tabs that depend on the non-time predictor types render `--` placeholders.
+- **MAMBA cbz**: same predictor_type-distribution issue, 65 rows but missing required types.
+
+All three cases pass the dashboard's Step 1 "No Red Errors" (no `Error:` text, no `[DEBUG_MODE_NULL_OUTPUT]` from the empty-state UI path) yet violate Step 2 "Meaningful Values" — and the violation is *upstream of* the dashboard, in the DRV output shape itself. The dashboard layer is the wrong enforcement point for this defect class.
+
+### The v1.3 normative addition
+
+DRV pipelines SHALL invoke an output-shape gate as the final pipeline target. The gate SHALL verify each declared DRV output at three levels:
+
+- **L1 table-exists** (mandatory): The named DuckDB table SHALL exist in `app_data.duckdb`.
+- **L2 row-count-min** (mandatory): The table SHALL contain at least `l2_row_count_min` rows.
+- **L3 predictor-type-distribution** (optional, where applicable): Tables with a `predictor_type` column SHALL contain at least `min_count_per_type` rows for each declared required predictor_type.
+
+Contracts SHALL live in `shared/global_scripts/98_test/e2e/contracts/<company>_drv.yaml`, parallel to (and NOT inside) the existing dashboard `<company>.yaml`. The gate script `shared/global_scripts/23_deployment/drv_output_shape_gate.R` is independent from `dashboard_presence_gate.R` (different input source: DuckDB tables via DBI vs Shiny UI elements via headless browser) but SHARES the same `contracts.R` primitive library where applicable.
+
+### Two-axis framework, restated for v1.3
+
+| Quality axis | Enforcement layer | Mechanism |
+|---|---|---|
+| Step 1: No Red Errors | Dashboard layer | `[DEBUG_MODE_NULL_OUTPUT]` scan + `no_red_error_text` assertion |
+| **Step 2: Meaningful Values** | **DRV layer (NEW v1.3)** | **`drv_output_shape_gate.R` against `<company>_drv.yaml`** |
+| Step 2: Meaningful Values | Dashboard layer (existing v1.1) | `assert_kpi_card_value` / `assert_datatable_meaningful_rows` / `assert_plotly_has_data_points` etc. |
+
+Step 2 is enforced at *both* layers because the two layers fail in different ways. DRV-layer enforcement makes vacuous-pass impossible at the producer side. Dashboard-layer enforcement catches consumer-side regressions (e.g., DRV output is fine but Shiny module filters it out). Defense in depth.
+
+### MP163 sentinel boundary
+
+Sentinel-covered rows (`'unclassified'`, `'UNKNOWN'`, per-domain MP163 markers) SHALL count toward L2 and L3 by default. They are explicit gap markers per MP163 Progressive Completeness, not missing data. Rejecting sentinel rows would force pipelines to `stop()` when input is incomplete, directly contradicting MP163's "always runnable" tenet.
+
+An optional `sentinel_ratio_max` per contract (default off) emits a *warning* when sentinel rows exceed a configurable fraction of total rows. This catches the case where sentinels mask a real upstream coverage problem without making the default behaviour incompatible with MP163.
+
+### 30-day warn-mode transition
+
+For 30 days after this v1.3 amendment merges (default sunset 2026-06-13), the gate operates in warn-mode by default: a missing `<company>_drv.yaml` for a registered pipeline emits a warning but SHALL NOT block `make run`. After sunset, the default flips to strict-mode: missing contracts SHALL cause hard-fail. Pattern matches MP102 v1.3's `reviewed_by` legacy-format sunset window (legacy accepted until 2026-07-31, then mandatory structured form). Per-company opt-in to strict-mode before sunset via `strict_mode: true` in `<company>_drv.yaml`.
+
+### Why this is a v1.3 amendment, not a sibling MP166
+
+v1.1 already framed Step 2 as a quality axis applicable across layers. The dashboard layer was the first instance; the DRV layer is the second. Conceptually they are the same principle enforced at different points, not different principles. A sibling MP166 would have identical Step 2 vocabulary and high cross-reference density — strong signal of one principle, two enforcement points. MP102 evolved similarly (v1.0 → v1.3, each amendment adding rigor without splitting).
+
+## Tier 1: DRV-End Lite Check (NULL Output Detection)
+
+`update_scripts/DRV/_targets.R` SHALL include a final target `dashboard_smoke_lite` that runs after all 5NM-layer derivations complete. The target SHALL launch a headless Shiny session in `SHINY_DEBUG_MODE=TRUE`, walk the default sidebar nav state across all active platforms and product_lines, and inspect the `.shiny-debug/shiny.log` for `[DEBUG_MODE_NULL_OUTPUT]` markers emitted by `04_utils/fn_debug_mode.R::debug_log_output()`.
+
+Any NULL render output SHALL fail the target. The pipeline rebuild SHALL fail with a structured message identifying `(company, tab, platform, product_line, output_id)`.
+
+**Runtime budget**: target ≤ 5 seconds typical, hard ceiling 30 seconds per company. Designed to be cheap enough for every `make run`.
+
+## Tier 2: Deploy-Gate Full Contract Suite
+
+`shared/global_scripts/23_deployment/dashboard_presence_gate.R` SHALL run before `make deploy-push` invokes `rsconnect`. The gate loads the per-company contract YAML at `shared/global_scripts/98_test/e2e/contracts/<company_lowercase>.yaml`, launches headless Shiny once per `(active_platform, active_product_line)` tuple, and evaluates every contract via the primitive helpers in `contracts.R`.
+
+Any contract with `severity: critical` failing SHALL cause the gate to exit non-zero and refuse the deploy push. Contracts with `severity: warning` SHALL be reported but SHALL NOT block deploy.
+
+**Runtime budget**: ≤ 60 seconds per company on typical app data sets. Acceptable because deploy is not a frequent operation.
+
+## Tier 3: CI Selective per Pull Request
+
+A CI workflow SHALL read the PR `git diff --name-only` between head and base, map changed paths to module identifiers via `shared/global_scripts/98_test/e2e/affected_modules.R`, and run only the corresponding contract subsets. The workflow SHALL complete within 30 seconds for typical PRs that touch one or two modules.
+
+PRs touching shared utilities consumed by all modules (e.g., `fn_translation.R`) SHALL trigger the full contract suite — selectivity is by reverse-dependency, not by file alone.
+
+## Contract Primitive Library
+
+`shared/global_scripts/98_test/e2e/contracts/contracts.R` SHALL provide at minimum five per-element-type assertion primitives:
+
+| Primitive                              | Asserts                                                                                |
+| -------------------------------------- | -------------------------------------------------------------------------------------- |
+| `assert_kpi_card_value`                | KPI card displays a value satisfying `op` (`>=`, `>`, `==`) against `threshold`         |
+| `assert_datatable_meaningful_rows`     | DataTable has ≥ `min_rows` after excluding placeholder rows (`Ideal`, `Rating`, `Revenue`) |
+| `assert_plotly_has_data_points`        | Plotly chart has ≥ `min_traces` traces with non-empty data arrays                       |
+| `assert_filter_dropdown_choices`       | Filter selectize / dropdown populates ≥ `min_choices` valid choices                     |
+| `assert_chart_axis_non_empty`          | Specified chart axis (`x` or `y`) has populated tick labels                             |
+
+The primitives SHALL accept consistent signature `(app, selector_id, ..., severity = "critical")`.
+
+The default `exclude_placeholders = TRUE` for `assert_datatable_meaningful_rows` is the critical strengthening of the prior weak `assert_datatable_has_rows(min_rows = 1)` contract — the prior contract incorrectly passed when QEF hsg had only 1 row (the `Ideal` placeholder), missing the actual data gap.
+
+## Per-Company Contract YAML Schema
+
+```yaml
+company: <COMPANY_NAME>
+modules:
+  <module_name>:
+    enabled: true | false
+    sub_tabs:
+      <tab_id>:
+        active_product_lines: [<id>, ...]
+        contracts:
+          - selector: <ns_id>
+            assertion: "<expression evaluated against the rendered output>"
+            severity: critical | warning
+```
+
+Per-company YAML lives at `shared/global_scripts/98_test/e2e/contracts/<company_lowercase>.yaml`. Companies that do not enable a module (e.g., KITCHENMAMA without BrandEdge) SHALL set `enabled: false` for documentation, OR may omit the module entirely. The natural opt-out path is the absence of the corresponding DRV target in the company's `update_scripts/DRV/_targets.R` — declarative dependency ensures the contract target does not run when its source DRV is absent.
+
+## Hard Fail Discipline
+
+The framework SHALL NOT support a global `soft_warn_mode` toggle that downgrades all critical contracts to warnings. The only opt-out paths are:
+
+1. The company does not enable the corresponding DRV (declarative dependency natural opt-out).
+2. The contract is explicitly declared `severity: warning` in the YAML (Tier 2 reports but does not block deploy; Tier 1 ignores severity since Tier 1 only checks NULL outputs).
+
+Hard fail aligns with the user requirement of "打通 + 不會紅字" (pipeline must work AND no red errors). Early fail-loud at the DRV gate prevents late red errors at the user's screen.
+
+## Backbone Implementation: nohup Rscript + agent-browser (NOT shinytest2)
+
+Tier 1 lite (`run_smoke_lite.R`) and Tier 2 deploy gate (`dashboard_presence_gate.R`) drive the company's Shiny app via:
+
+```
+nohup Rscript app.R > .shiny-debug/shiny.log 2>&1 &
+agent-browser open http://127.0.0.1:<port>
+agent-browser snapshot -i  # find element refs
+agent-browser fill / click # auth + walk top-nav
+# Read .shiny-debug/shiny.log for [DEBUG_MODE_NULL_OUTPUT] markers
+```
+
+This is intentionally **not** `shinytest2`. The choice was made empirically after `#604` and `#605` showed shinytest2's stability detector aborts on plotly-heavy initial renders even after the underlying reactive cross-tab leak (`#603`) was gated, and shinytest2's chromote subprocess writes to a temp dir not the `.shiny-debug/shiny.log` path that `04_utils/fn_debug_mode.R::debug_log_output()` writes to (DEV_R054).
+
+**Constraints**:
+
+- **Tier 1 lite**: deterministic agent-browser navigation timing; not subject to plotly stability detector races.
+- **Tier 2 deploy gate**: same backbone as Tier 1; v2 evaluates NULL-output markers only (per-element DOM contracts deferred to v3 follow-up — DOM extraction helpers via `agent-browser snapshot --page`).
+- **Tier 3 CI selective**: `affected_modules.R` selects subset; CI runs the same gate, agent-browser works in headless Chromium under GitHub Actions.
+
+**`shinytest2` retained for `98_test/e2e/test-*.R` unit-style tests** (single-output value assertions). For DASHBOARD-LEVEL e2e (per-tab × per-platform × per-product_line walk), the Rscript + agent-browser backbone is the framework standard.
+
+**Escape hatch in existing tests**: `test-brandedge.R` exposes `MP165_USE_AGENT_BROWSER=true` env var that delegates the L1 test to `run_smoke_lite.R`. Default keeps `shinytest2` for backward compatibility with CI workflows that already use it.
+
+**Cross-platform note**: `agent-browser` is the primary tool (cross-platform Chromium via Puppeteer). `safari-browser` (macOS native Safari) is the alternative for live URL post-deploy verification (e.g., MAMBA Posit Connect Cloud). Both share the snapshot/click ref-based API, so any helper written against agent-browser can be re-pointed to safari-browser by changing the CLI binary name.
+
+**IC_P002 cross-co verified 2026-05-10**: backbone tested PASS on QEF_DESIGN (119 contracts, 18.6s), D_RACING (13 contracts), MAMBA (10 contracts). Single shared `run_smoke_lite.R` + `dashboard_presence_gate.R` work for all 3 companies without per-company code changes.
+
+## Anti-Patterns
+
+| Anti-Pattern                                                  | Why Wrong                                                                                  |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `assert_datatable_has_rows(min_rows = 1)` without exclusion   | 1-row `Ideal` placeholder passes; misses the actual data gap                               |
+| Adding `soft_warn_mode = TRUE` to skip failing contracts      | Defeats the gate; user requirement explicit "不會紅字" demands hard fail                     |
+| Putting `enabled: false` on a module that has an active DRV   | Inconsistent state — DRV writes data but contracts skip; surfaces as deploy gate skip      |
+| Running Tier 1 lite alone (skipping Tier 2 deploy gate)       | NULL detection is necessary but insufficient — every-field assertions catch the 1-row case |
+| Hardcoding contract thresholds in R instead of company YAML   | Cross-company maintenance friction; QEF brand counts != D_RACING brand counts               |
+| Skipping `IC_P002` cross-company verify on contract YAML      | Cross-company impact requires explicit verification per `IC_P002` discipline                |
+
+## Compliant Patterns
+
+| Compliant Pattern                                                                          | Why Correct                                                                              |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `assert_datatable_meaningful_rows(min_rows = 5, exclude_placeholders = TRUE)`              | Catches the `Ideal`-only case from `#595` reproduction                                    |
+| Tier 1 lite at DRV-end + Tier 2 full at deploy-gate (layered)                              | Performance budget respected (5s on every `make run`, 60s only on infrequent deploy)      |
+| `severity: warning` on tabs not yet fully implemented                                      | Allows incremental rollout while still surfacing the gap                                  |
+| KITCHENMAMA omits BrandEdge contracts entirely (relies on absent DRV target)               | Declarative dependency natural opt-out                                                    |
+| Per-company YAML threshold (`min_brands: 5` for QEF, `min_brands: 3` for D_RACING)          | Company-specific tuning without R code change                                             |
+| Contract YAML loader validates schema at startup with actionable error                     | Surfaces typos before contract execution                                                  |
+
+## Files Bound by This Principle
+
+| File                                                                                | Role                                                                          |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `shared/global_scripts/98_test/e2e/contracts/contracts.R`                           | Primitive helpers (the framework backbone)                                    |
+| `shared/global_scripts/98_test/e2e/contracts/<company_lowercase>.yaml`              | Per-company contract declarations                                             |
+| `shared/global_scripts/98_test/e2e/test-*.R`                                        | Existing e2e tests strengthened to call primitives                            |
+| `shared/global_scripts/23_deployment/dashboard_presence_gate.R`                     | Tier 2 deploy gate                                                            |
+| `shared/update_scripts/DRV/_targets.R`                                              | Tier 1 lite target plumbing                                                   |
+| `shared/global_scripts/04_utils/fn_debug_mode.R`                                    | Existing `debug_log_output()` helper used by Tier 1                           |
+| `shared/global_scripts/00_principles/.claude/rules/01-always.md`                    | Layer 3 quick reference (DOC_R009 sync)                                        |
+| `shared/global_scripts/00_principles/llm/CH00_meta.yaml`                            | Layer 2 LLM index (DOC_R009 sync)                                              |
+
+### Change Discipline
+
+Modifications to bound files SHALL respect:
+
+- `IC_P002` cross-company verification (5 companies must verify): commit message includes `Verified:` trailer
+- `DOC_R009` triple-layer sync: any spec/threshold/principle change updates `.qmd` (Layer 1, this file) → `llm/*.yaml` (Layer 2) → `.claude/rules/*.md` (Layer 3) in that order
+- `MP029` verify-before-acting: contract additions SHALL be motivated by an actual reproduction case, not speculation
+
+## Sister Principle Cross-References
+
+### MP162 as the per-bridge complement
+
+MP162 governs the per-bridge ship-readiness axis (L1-L5). MP162 L4 requires at least one Shiny module to render > 0 rows for the bridge's downstream data. MP165 is the per-dashboard-tab × per-platform × per-product_line complement — finer granularity, broader unit. Both must hold for production-ready data flow.
+
+### MP163 as the orthogonal complement
+
+MP163 governs the input-completeness axis: the pipeline keeps running when human inputs are absent, gaps surface as sentinels. MP165 governs the rendering-acceptance axis: the pipeline only succeeds when every tab × platform × product_line renders contract-pass content. The two are orthogonal — both axes must hold for user-facing completeness. A pipeline can satisfy MP163 (gracefully sentinel-bucket gaps) yet fail MP165 (those gaps render as user-visible empty tabs that surface no actionable hint), and vice versa.
+
+### MP102 v1.3 as the upstream contract layer
+
+MP102 v1.3 governs bridge yaml authoring contract (reviewed_by structured, sibling review log, four-agent self-converging review). MP165 is downstream: bridge yaml correct + DRV pipeline complete is necessary but not sufficient for user-visible completeness. The rendering layer needs its own acceptance contract.
+
+### MP029 as the verify-before-acting alignment
+
+MP029 demands verify-before-acting against fake information. MP165 contract assertions are concrete reproductions: a 1-row `Ideal` placeholder is observably-empty even if the row count is technically ≥ 1. The strengthened `assert_datatable_meaningful_rows` primitive operationalizes MP029 at the rendering boundary.
+
+## Triggering Issues and Reproduction
+
+- `#595`: QEF BrandEdge + TagPilot dashboard reproducibly empty for the user; reproduction documented in `#595` re-diagnose comment 4413773856
+- `#599`: meta-issue capturing the acceptance ladder gap exposed by `#595` close
+- `#600`: BrandEdge 5 sister sub-tabs hardcoded English empty-state (out of MP165 scope; UX issue)
+- `#601`: QEF hsg AI scoring data gap (out of MP165 scope; data quality issue)
+
+## Spectra Change
+
+`dashboard-presence-verification` (2026-05-10): introduces MP165 + framework + Tier 1/2/3 integration. Implementation tasks tracked in `openspec/changes/dashboard-presence-verification/tasks.md`.
+
+## Change Log
+
+### v1.3 (2026-05-14) — DRV-Layer Step 2 Propagation
+
+GitHub issue: [#668](https://github.com/kiki830621/ai_martech_global_scripts/issues/668)
+
+**Architectural amendment + new section, propagates Step 2 "Meaningful Values" enforcement from the dashboard layer to the DRV layer.**
+
+What changed:
+
+- **New section: DRV-Layer Step 2 Propagation** — explicit codification of Step 2 quality axis enforcement at the DRV layer via a new `drv_output_shape_gate.R` script and per-company `<company>_drv.yaml` contracts. Closes the vacuous-pass gap where DRV pipelines reported success producing empty / partial output tables (3 concrete cases: D_RACING amz missing table, QEF amz incomplete predictor_type distribution, MAMBA cbz same pattern).
+- **3-level granularity formalization**: L1 table-exists (mandatory) + L2 row-count-min (mandatory) + L3 predictor-type-distribution (optional, where applicable). Two-level alone is too coarse — empty time_feature would also be missed.
+- **MP163 sentinel-cover boundary** — sentinels count toward L2 and L3 by default (don't break Progressive Completeness); optional `sentinel_ratio_max` warning for opt-in detection of mask-by-sentinel anti-pattern.
+- **30-day warn-mode transition** — default warn-mode until 2026-06-13 sunset, then strict-mode; per-company `strict_mode: true` opt-in available before sunset. Matches MP102 v1.3's `reviewed_by` legacy-format sunset pattern.
+
+What did NOT change (backward compatibility):
+
+- All v1.0 / v1.1 / v1.2 sections continue to apply unchanged.
+- All existing Track A contract yamls (`qef_design.yaml` / `d_racing.yaml` / `mamba.yaml`) continue to work — they govern dashboard-layer enforcement, orthogonal to the new DRV-layer yaml.
+- All existing `contracts.R` primitives continue to work — the new gate uses DBI direct queries, shares the primitive library only where applicable.
+- Track B (`/shiny-adaptive-walk`) continues to govern dashboard-layer adaptive overlay — the DRV gate is a separate axis.
+
+**Why now**: 2026-05-13 cross-company adaptive walk (issue #653 Phase 5) surfaced systematic vacuous-pass at the DRV layer across multiple companies. Per `/spectra-discuss` convergence, 6 design decisions locked:
+
+1. MP165 v1.3 amendment (NOT sibling MP166)
+2. Independent `drv_output_shape_gate.R` (NOT `dashboard_presence_gate.R --mode drv`)
+3. Standalone `<company>_drv.yaml` per company (NOT in `app_config.yaml`)
+4. 3-level granularity (L1 + L2 + L3 optional)
+5. 30-day warn-mode → strict-mode transition
+6. MP163 sentinels pass by default; `sentinel_ratio_max` opt-in warning
+
+**Triple-layer sync** (per DOC_R009):
+
+- Layer 1 .qmd (en + zh): this file + zh mirror
+- Layer 2 `llm/CH00_meta.yaml`: MP165 entry `version: 1.3` with DRV-layer Step 2 vocabulary in `one_liner` + new `rule_natural` sub-rule
+- Layer 3 `.claude/rules/01-always.md`: MP165 quick reference appended DRV-layer gate (v1.3) sentence
+
+**Spectra change**: `mp165-drv-output-shape-gate` (`openspec/changes/mp165-drv-output-shape-gate/`, 5-phase tasks file). v1.3 amendment is Phase 1 of that change.
+
+### v1.2 (2026-05-13) — Dual-Track Architecture + Aggressive Test-Framework Authority
+
+GitHub issue: [#653](https://github.com/kiki830621/ai_martech_global_scripts/issues/653)
+
+**Architectural amendment + new section, codifies Track A / Track B / (C) authority for the new `/shiny-adaptive-walk` skill**.
+
+What changed:
+
+- **New section: Dual-Track Architecture** — explicit codification of Track A (declarative baseline,existing) + Track B (adaptive overlay,new `/shiny-adaptive-walk` skill). Previously Track A existed but was the only track;Track B added without principle backing would have been ad-hoc.
+- **(C) Aggressive authority specification** — explicit mutable-zone whitelist for Track B skill to edit test framework + immutable-zone blacklist (production code) routed to `/idd-issue` instead.
+- **Track convergence prose** — declarative is the floor, adaptive is the ceiling. Both must hold for full MP165 conformance.
+
+What did NOT change (backward compatibility):
+
+- All existing Track A contracts (`qef_design.yaml` / `d_racing.yaml` / `mamba.yaml`) continue to work unchanged
+- All existing contract primitives in `contracts.R` continue to work (+ 3 new from Phase 1: `assert_no_error_text`、`assert_no_hardcoded_english`、`assert_kpi_no_error_placeholder`)
+- All existing Tier 1/2/3 runners continue to work (`run_smoke_lite.R` gains recursive sub-tab walk per Phase 2,backward compat via `recurse_sub_tabs = FALSE`)
+- v1.1 Two-Axis Framework (Step 1 / Step 2 × Local / Deploy) continues to apply,now joined by Track A / Track B as orthogonal axis (timing × quality × context × architecture)
+
+**Why now**: issue #653 user-visible defects (F1-F5 in QEF amz dashboard) escaped v1.0/v1.1 declarative gate's 119/119 PASS because (a) walker didn't enter sub-tabs (b) `qef_design.yaml` had coverage gap on InsightForge module (c) primitives lacked `Error: [object Object]` blocklist. The 5 defects are real bugs;the gate gap is a coverage-completeness gap. Track B is the architectural response that lets adaptive discovery close coverage gaps without violating Track A's hand-maintained authoritative status.
+
+**Triple-layer sync** (per DOC_R009):
+
+- Layer 1 .qmd (en + zh): this file + zh mirror
+- Layer 2 `llm/CH00_meta.yaml`: MP165 entry `version: 1.2` with Track A/B vocabulary in `one_liner` + new `rule_natural` sub-rule (7) on dual-track + mutation boundary
+- Layer 3 `.claude/rules/01-always.md`: MP165 quick reference appended Track A/B (v1.2) sentence + `MP165_ADAPTIVE_BUDGET` env var mention
+- Layer 3 `.claude/rules/08-shiny-testing.md`: narrow exception clause amended to reference `/shiny-adaptive-walk` as the canonical exception case
+
+**Plugin Coupling**:
+
+- `r-shiny-debugger` plugin v1.1+ (in `PsychQuant/psychquant-claude-plugins`) ships the `/shiny-adaptive-walk` command implementing this principle's Track B authority
+- Plugin version must be ≥ 1.1 for adaptive-walker skill to be available
+
+**Spectra change**: `adaptive-dashboard-test-loop` (`openspec/changes/adaptive-dashboard-test-loop/`,multi-phase). v1.2 amendment is Phase 4 of that change.
+
+### v1.1 (2026-05-13) — Two-Axis Step 1/Step 2 × Local/Deploy Framework
+
+GitHub issue: [#648](https://github.com/kiki830621/ai_martech_global_scripts/issues/648)
+
+**Vocabulary amendment, no normative behavior change**. The existing Tier 1/2/3 contract enforcement remains unchanged. v1.1 adds explicit two-axis vocabulary that was previously implicit:
+
+- **New section: Two-Axis Acceptance Framework** — separates the quality axis (Step 1: no red errors / Step 2: meaningful values) from the context axis (Local check / Deploy check).
+- **New section: Tier ↔ Step Mapping** — disambiguation table clarifying that Tier 1 is not equivalent to Step 1; Tier system is timing, Step system is quality criterion.
+- **New section: Local Check Discipline** — explicit local context spec (warning tolerance, severity relaxations, cadence) differentiated from deploy-gate hard-fail discipline.
+
+**Rationale**: prior to v1.1, the Step 1 / Step 2 quality criteria were embedded inside contract primitive function semantics (`assert_kpi_card_value` implicitly = Step 2; `no_red_error_text` implicitly = Step 1) without principle-level codification. The local vs. deploy stringency distinction was implicit in the "Hard Fail Discipline" section but not differentiated as orthogonal context axis. v1.1 elevates both axes to first-class principle vocabulary so future verification work can mechanically align (e.g., "this issue verifies Step 2 in Local context for QEF amz dashboard").
+
+**Backward compatibility**: all existing contract YAMLs (`qef_design.yaml`, `d_racing.yaml`, `mamba.yaml`), all existing primitive helpers in `contracts.R`, and all existing Tier 1/2/3 runners (`run_smoke_lite.R`, `dashboard_presence_gate.R`) continue to work unchanged. The amendment is purely additive at the principle layer.
+
+**Triple-layer sync** (per DOC_R009):
+
+- Layer 1 .qmd (en + zh): this file + zh mirror
+- Layer 2 `llm/CH00_meta.yaml`: MP165 entry updated to `version: 1.1` with Two-Axis vocabulary in `one_liner` and new `rule_natural` sub-rule (6)
+- Layer 3 `.claude/rules/01-always.md`: MP165 quick reference appended Two-Axis (v1.1) sentence
+
+### v1.0 (2026-05-10)
+
+Initial release. Introduced Tier 1/2/3 enforcement framework, 5 contract primitives in `contracts.R`, per-company contract YAML schema, hard-fail discipline (no `soft_warn_mode` global toggle), `nohup Rscript + agent-browser` backbone (NOT shinytest2 per `#604`/`#605`). IC_P002 cross-co verified PASS on QEF_DESIGN (119 contracts) / D_RACING (13) / MAMBA (10).
+
+Triggered by `#599` (filed 2026-05-10 from `#595` reproduce session) — `/idd-implement #595` Phase A/B/C verification chain over-claimed acceptance despite QEF BrandEdge dashboard rendering empty for the user.
